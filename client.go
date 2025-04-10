@@ -406,8 +406,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
 
-			fmt.Printf("Waiting for connection from %s...\n", msg.SenderName)
-
 			go func(listener net.Listener, msg Message) {
 				defer listener.Close()
 
@@ -418,7 +416,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 				}
 
 				defer conn.Close()
-				fmt.Printf("Connected to %s. Receiving files...\n", msg.SenderName)
 
 				if err := os.MkdirAll(downloadDir, 0755); err != nil {
 					fmt.Printf("Error creating downloads directory: %v\n", err)
@@ -426,7 +423,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 				}
 
 				for _, fileInfo := range msg.Files {
-					fmt.Printf("Receiving %s (%s)...\n", fileInfo.Name, formatSize(fileInfo.Size))
 					filePath := filepath.Join(downloadDir, fileInfo.Name)
 
 					if _, err := os.Stat(filePath); err == nil {
@@ -462,14 +458,12 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 						}
 
 						received += int64(n)
-						fmt.Printf("\rProgress: %d%%", int(float64(received)/float64(fileInfo.Size)*100))
 					}
 
 					file.Close()
-					fmt.Printf("\nSaved to %s\n", filePath)
 				}
 
-				fmt.Println("File transfer complete")
+				fmt.Println(SUCCESS.Render("All files received ✓"))
 			}(listener, msg)
 		}
 	}
