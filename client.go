@@ -155,7 +155,7 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 					if err := os.MkdirAll(downloadDir, 0755); err != nil {
 						return err
 					}
-					fmt.Printf("Listening for incoming files. Files will be saved to %s\n", downloadDir)
+					fmt.Println(INFO.Render(fmt.Sprintf("Listening for incoming files. Files will be saved to %s", downloadDir)))
 
 					go c.handleTransferRequests(ctx, downloadDir)
 
@@ -338,7 +338,7 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 			if enterr != nil {
 				continue
 			}
-			option := fmt.Sprintf("%s (%s)", entry.Name(), formatSize(fileInfo.Size()))
+			option := fmt.Sprintf("%s (%d)", entry.Name(), fileInfo.Size())
 			fileOptions = append(fileOptions, huh.NewOption(option, entry.Name()))
 		}
 	}
@@ -388,7 +388,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 		case <-ctx.Done():
 			return
 		case msg := <-c.transferReqChan:
-			fmt.Printf("\nFile transfer request from %s\n", msg.SenderName)
+			fmt.Println(INFO.Render(fmt.Sprintf("\nFile chomping request from %s", msg.SenderName)))
 
 			confirm := c.showConfirm(fmt.Sprintf("Accept %d files from %s?", len(msg.Files), msg.SenderName))
 
@@ -405,7 +405,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
 
-			fmt.Printf("Waiting for connection from %s...\n", msg.SenderName)
+			fmt.Println(INFO.Render(fmt.Sprintf("Connecting to %s...", msg.SenderName)))
 
 			go func(listener net.Listener, msg Message) {
 				defer listener.Close()
@@ -417,8 +417,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 				}
 				defer conn.Close()
 
-				fmt.Printf("Connected to %s. Receiving files...\n", msg.SenderName)
-
+				fmt.Println(INFO.Render("Connected. Receiving files..."))
 				if err := os.MkdirAll(downloadDir, 0755); err != nil {
 					fmt.Printf("Error creating downloads directory: %v\n", err)
 					return
@@ -442,7 +441,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 						break
 					}
 
-					// Parse header
 					if !strings.HasPrefix(header, "FILE:") {
 						fmt.Printf("Invalid header format: %s\n", header)
 						return
@@ -462,7 +460,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 					}
 
 					filePath := filepath.Join(downloadDir, fileName)
-					if _, err := os.Stat(filePath); err == nil {
+					if _, err = os.Stat(filePath); err == nil {
 						base := filepath.Base(fileName)
 						ext := filepath.Ext(base)
 						name := strings.TrimSuffix(base, ext)
@@ -483,10 +481,10 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 					}
 
 					file.Close()
-					fmt.Printf("Received %s (%d bytes)\n", fileName, received)
+					fmt.Println(INFO.Render(fmt.Sprintf("Received %s (%d bytes)\n", fileName, received)))
 				}
 
-				fmt.Println("File transfer complete")
+				fmt.Println(SUCCESS.Render("File chomping complete ✓"))
 			}(listener, msg)
 		}
 	}
@@ -634,12 +632,7 @@ func (c *Client) broadcastPresence(ctx context.Context) {
 func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFunc) {
 	fmt.Println(INFO.Render("Discovering peers on your network..."))
 
-	go c.handleTransferRequests(ctx, "./files")
-
 	go c.listen(ctx)
-	go c.broadcastPresence(ctx)
-
-	c.refreshPeers()
 
 	for {
 		option := c.showMainMenu()
