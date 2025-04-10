@@ -53,9 +53,9 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 		Description: "A command-line tool for sharing files with peers on your local network",
 		Commands: []*cli.Command{
 			{
-				Name:    "start",
-				Aliases: []string{"s"},
-				Usage:   "Start LAN Share in interactive mode",
+				Name:    "chuck",
+				Aliases: []string{"ck"},
+				Usage:   "Send files to discovered peers",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "name",
@@ -139,7 +139,7 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 				},
 			},
 			{
-				Name:    "listen",
+				Name:    "chomp",
 				Aliases: []string{"l"},
 				Usage:   "Listen for incoming files",
 				Flags: []cli.Flag{
