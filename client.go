@@ -1,6 +1,7 @@
 package gobyte
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -230,6 +232,9 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 
 	defer tcpConn.Close()
 
+	writer := bufio.NewWriter(tcpConn)
+	defer writer.Flush()
+
 	for _, fileInfo := range files {
 		fmt.Printf("Sending %s to %s...\n", fileInfo.Name, peer.Name)
 		file, err := os.Open(fileInfo.Path)
@@ -238,33 +243,27 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 			continue
 		}
 
-		buffer := make([]byte, maxBufferSize)
-		sent := int64(0)
+		header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
+		if _, err = writer.WriteString(header); err != nil {
+			fmt.Printf("Error sending file header: %v\n", err)
+			file.Close()
+			continue
+		}
+		writer.Flush()
 
-		for sent < fileInfo.Size {
-			n, err := file.Read(buffer)
-			if err != nil && err != io.EOF {
-				fmt.Printf("Error reading file: %v\n", err)
-				break
-			}
-			if n == 0 {
-				break
-			}
-
-			written, err := tcpConn.Write(buffer[:n])
-			if err != nil {
-				fmt.Printf("Error sending file data: %v\n", err)
-				break
-			}
-
-			sent += int64(written)
-			fmt.Printf("\rProgress: %d%%", int(float64(sent)/float64(fileInfo.Size)*100))
+		sent, err := io.CopyN(writer, file, fileInfo.Size)
+		if err != nil {
+			fmt.Printf("Error sending file data: %v\n", err)
+			file.Close()
+			continue
 		}
 
 		file.Close()
-		fmt.Println("\nFile sent successfully")
+		fmt.Printf("\nSent %s (%d bytes)\n", fileInfo.Name, sent)
 	}
 
+	writer.WriteString("END\n")
+	writer.Flush()
 	fmt.Printf("All files sent to %s\n", peer.Name)
 }
 
@@ -406,6 +405,8 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
 
+			fmt.Printf("Waiting for connection from %s...\n", msg.SenderName)
+
 			go func(listener net.Listener, msg Message) {
 				defer listener.Close()
 
@@ -414,19 +415,55 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 					fmt.Printf("Error accepting connection: %v\n", err)
 					return
 				}
-
 				defer conn.Close()
+
+				fmt.Printf("Connected to %s. Receiving files...\n", msg.SenderName)
 
 				if err := os.MkdirAll(downloadDir, 0755); err != nil {
 					fmt.Printf("Error creating downloads directory: %v\n", err)
 					return
 				}
 
-				for _, fileInfo := range msg.Files {
-					filePath := filepath.Join(downloadDir, fileInfo.Name)
+				reader := bufio.NewReader(conn)
 
+				for {
+					header, err := reader.ReadString('\n')
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						fmt.Printf("Error reading header: %v\n", err)
+						return
+					}
+
+					header = strings.TrimSpace(header)
+
+					if header == "END" {
+						break
+					}
+
+					// Parse header
+					if !strings.HasPrefix(header, "FILE:") {
+						fmt.Printf("Invalid header format: %s\n", header)
+						return
+					}
+
+					parts := strings.Split(header, ":")
+					if len(parts) != 3 {
+						fmt.Printf("Invalid header format: %s\n", header)
+						return
+					}
+
+					fileName := parts[1]
+					fileSize, err := strconv.ParseInt(parts[2], 10, 64)
+					if err != nil {
+						fmt.Printf("Invalid file size: %v\n", err)
+						return
+					}
+
+					filePath := filepath.Join(downloadDir, fileName)
 					if _, err := os.Stat(filePath); err == nil {
-						base := filepath.Base(fileInfo.Name)
+						base := filepath.Base(fileName)
 						ext := filepath.Ext(base)
 						name := strings.TrimSuffix(base, ext)
 						filePath = filepath.Join(downloadDir, fmt.Sprintf("%s_%d%s", name, time.Now().Unix(), ext))
@@ -435,35 +472,21 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 					file, err := os.Create(filePath)
 					if err != nil {
 						fmt.Printf("Error creating file: %v\n", err)
-						continue
+						return
 					}
 
-					received := int64(0)
-					buffer := make([]byte, maxBufferSize)
-
-					for received < fileInfo.Size {
-						n, err := conn.Read(buffer)
-						if err != nil && err != io.EOF {
-							fmt.Printf("Error receiving file data: %v\n", err)
-							break
-						}
-						if n == 0 {
-							break
-						}
-
-						_, err = file.Write(buffer[:n])
-						if err != nil {
-							fmt.Printf("Error writing to file: %v\n", err)
-							break
-						}
-
-						received += int64(n)
+					received, err := io.CopyN(file, reader, fileSize)
+					if err != nil {
+						fmt.Printf("Error receiving file data: %v\n", err)
+						file.Close()
+						return
 					}
 
 					file.Close()
+					fmt.Printf("Received %s (%d bytes)\n", fileName, received)
 				}
 
-				fmt.Println(SUCCESS.Render("All files received ✓"))
+				fmt.Println("File transfer complete")
 			}(listener, msg)
 		}
 	}
