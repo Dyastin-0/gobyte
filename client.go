@@ -495,9 +495,9 @@ func (c *Client) broadcastPresence(ctx context.Context) {
 func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFunc) {
 	fmt.Println(INFO.Render("Discovering peers on your network..."))
 
-	go func() {
-		c.listen(ctx)
-		c.broadcastPresence(ctx)
+	func() {
+		go c.listen(ctx)
+		go c.broadcastPresence(ctx)
 	}()
 
 	for {
