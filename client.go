@@ -23,10 +23,9 @@ type Client struct {
 	KnownPeers    map[string]*Peer
 	SelectedFiles []FileInfo
 	MU            sync.RWMutex
-	Cancel        *context.CancelFunc
 }
 
-func NewClient(cancel *context.CancelFunc) Client {
+func NewClient(ctx context.Context) Client {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown-host"
@@ -38,13 +37,12 @@ func NewClient(cancel *context.CancelFunc) Client {
 			Name:      hostname,
 			IPAddress: getLocalIP(),
 		},
-		Cancel:        cancel,
 		KnownPeers:    make(map[string]*Peer),
 		SelectedFiles: make([]FileInfo, 6),
 	}
 }
 
-func (c *Client) Run(ctx context.Context) {
+func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 	app := &cli.Command{
 		Name:        "gobyte",
 		Usage:       "Share files on your local network",
@@ -64,11 +62,11 @@ func (c *Client) Run(ctx context.Context) {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					if cmd.String("name") != "" {
-						localPeer.Name = cmd.String("name")
+						c.Self.Name = cmd.String("name")
 					}
 					fmt.Println(TITLE.Render("GOBYTE"))
 					fmt.Printf("Running as: %s (%s)\n", c.Self.Name, c.Self.IPAddress)
-					c.runInteractiveMode()
+					c.runInteractiveMode(ctx, cancel)
 					return nil
 				},
 			},
@@ -126,16 +124,16 @@ func (c *Client) Run(ctx context.Context) {
 						c.discoverPeers(3)
 
 						for _, peerID := range cmd.StringSlice("peer") {
-							peersMutex.RLock()
-							peer, exists := knownPeers[peerID]
-							peersMutex.RUnlock()
+							c.MU.RLock()
+							peer, exists := c.KnownPeers[peerID]
+							c.MU.RUnlock()
 
 							if !exists {
 								fmt.Printf("Peer ID %s not found\n", peerID)
 								continue
 							}
 
-							c.sendFilesTo(&peer, files)
+							c.sendFilesTo(peer, files)
 						}
 					} else {
 						return fmt.Errorf("must specify peers with --peer or use --interactive")
@@ -165,8 +163,8 @@ func (c *Client) Run(ctx context.Context) {
 					fmt.Printf("Listening for incoming files. Files will be saved to %s\n", downloadDir)
 
 					func() {
-						go c.listen()
-						go c.broadcastPresence()
+						go c.listen(ctx)
+						go c.broadcastPresence(ctx)
 					}()
 
 					<-ctx.Done()
@@ -196,9 +194,9 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 
 	msg := Message{
 		Type:       TypeTransferReq,
-		SenderID:   localPeer.ID,
-		SenderName: localPeer.Name,
-		IPAddress:  localPeer.IPAddress,
+		SenderID:   c.Self.ID,
+		SenderName: c.Self.Name,
+		IPAddress:  c.Self.IPAddress,
 		Files:      files,
 	}
 
@@ -271,17 +269,17 @@ func (c *Client) selectPeers() ([]Peer, error) {
 	c.MU.RLock()
 	defer c.MU.RUnlock()
 
-	if len(knownPeers) == 0 {
+	if len(c.KnownPeers) == 0 {
 		return nil, fmt.Errorf("no peers found")
 	}
 
 	var peerOptions []huh.Option[string]
 	peerMap := make(map[string]Peer)
 
-	for _, peer := range knownPeers {
+	for _, peer := range c.KnownPeers {
 		option := fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)
 		peerOptions = append(peerOptions, huh.NewOption(option, peer.ID))
-		peerMap[peer.ID] = peer
+		peerMap[peer.ID] = *peer
 	}
 
 	var selectedPeerIDs []string
@@ -378,7 +376,7 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 	return selectedFiles, nil
 }
 
-func (c *Client) listen() {
+func (c *Client) listen(ctx context.Context) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", discoveryPort))
 	if err != nil {
 		fmt.Printf("Error resolving UDP address: %v\n", err)
@@ -398,7 +396,7 @@ func (c *Client) listen() {
 
 	for {
 		select {
-		case <-discoveryCtx.Done():
+		case <-ctx.Done():
 			return
 		default:
 			conn.SetReadDeadline(time.Now().Add(1 * time.Second))
@@ -418,7 +416,7 @@ func (c *Client) listen() {
 				continue
 			}
 
-			if msg.SenderID == localPeer.ID {
+			if msg.SenderID == c.Self.ID {
 				continue
 			}
 
@@ -438,7 +436,7 @@ func (c *Client) refreshPeers() {
 	fmt.Println(INFO.Render("Refreshing peer list..."))
 
 	c.MU.Lock()
-	knownPeers = make(map[string]Peer)
+	c.KnownPeers = make(map[string]*Peer)
 	c.MU.Unlock()
 
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", broadcastAddr, discoveryPort))
@@ -457,15 +455,15 @@ func (c *Client) refreshPeers() {
 	c.sendDiscoveryBroadcast(conn)
 
 	c.MU.RLock()
-	if len(knownPeers) > 0 {
-		fmt.Printf(INFO.Render("Found %d peers on the network.\n"), len(knownPeers))
+	if len(c.KnownPeers) > 0 {
+		fmt.Printf(INFO.Render("Found %d peers on the network.\n"), len(c.KnownPeers))
 	} else {
 		fmt.Println(INFO.Render("No peers found."))
 	}
 	c.MU.RUnlock()
 }
 
-func (c *Client) broadcastPresence() {
+func (c *Client) broadcastPresence(ctx context.Context) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", broadcastAddr, discoveryPort))
 	if err != nil {
 		fmt.Printf("Error resolving broadcast address: %v\n", err)
@@ -488,18 +486,18 @@ func (c *Client) broadcastPresence() {
 		select {
 		case <-ticker.C:
 			c.sendDiscoveryBroadcast(conn)
-		case <-discoveryCtx.Done():
+		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Client) runInteractiveMode() {
+func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFunc) {
 	fmt.Println(INFO.Render("Discovering peers on your network..."))
 
 	go func() {
-		c.listen()
-		c.broadcastPresence()
+		c.listen(ctx)
+		c.broadcastPresence(ctx)
 	}()
 
 	for {
@@ -510,7 +508,7 @@ func (c *Client) runInteractiveMode() {
 		case "refresh":
 			c.refreshPeers()
 		case "quit":
-			discoveryCancel()
+			cancel()
 			fmt.Println("Goodbye!")
 			return
 		}
@@ -520,9 +518,9 @@ func (c *Client) runInteractiveMode() {
 func (c *Client) sendDiscoveryBroadcast(conn *net.UDPConn) {
 	msg := Message{
 		Type:       TypeDiscovery,
-		SenderID:   localPeer.ID,
-		SenderName: localPeer.Name,
-		IPAddress:  localPeer.IPAddress,
+		SenderID:   c.Self.ID,
+		SenderName: c.Self.Name,
+		IPAddress:  c.Self.IPAddress,
 	}
 
 	jsonData, err := json.Marshal(msg)
@@ -577,7 +575,7 @@ func (c *Client) listenWithTimeout(ctx context.Context) {
 				continue
 			}
 
-			if msg.SenderID == localPeer.ID {
+			if msg.SenderID == c.Self.ID {
 				continue
 			}
 
@@ -619,19 +617,19 @@ func (c *Client) displayPeers() {
 	c.MU.RLock()
 	defer c.MU.RUnlock()
 
-	if len(knownPeers) == 0 {
+	if len(c.KnownPeers) == 0 {
 		fmt.Println(INFO.Render("No peers found on the network."))
 		return
 	}
 
-	fmt.Printf("len %d", len(knownPeers))
+	fmt.Printf("len %d", len(c.KnownPeers))
 
-	fmt.Printf(INFO.Render("Found %d peers on the network:\n"), len(knownPeers))
+	fmt.Printf(INFO.Render("Found %d peers on the network:\n"), len(c.KnownPeers))
 	fmt.Println(strings.Repeat("-", 50))
 	fmt.Printf("%-20s %-15s %s\n", "NAME", "IP ADDRESS", "ID")
 	fmt.Println(strings.Repeat("-", 50))
 
-	for _, peer := range knownPeers {
+	for _, peer := range c.KnownPeers {
 		fmt.Printf("%-20s %-15s %s\n", peer.Name, peer.IPAddress, peer.ID)
 	}
 }
@@ -643,15 +641,15 @@ func (c *Client) handleDiscoveryMessage(msg Message, remoteAddr *net.UDPAddr, co
 		IPAddress: msg.IPAddress,
 	}
 
-	peersMutex.Lock()
-	knownPeers[peer.ID] = peer
-	peersMutex.Unlock()
+	c.MU.Lock()
+	c.KnownPeers[peer.ID] = &peer
+	c.MU.Unlock()
 
 	ackMsg := Message{
 		Type:       TypeDiscoveryAck,
-		SenderID:   localPeer.ID,
-		SenderName: localPeer.Name,
-		IPAddress:  localPeer.IPAddress,
+		SenderID:   c.Self.ID,
+		SenderName: c.Self.Name,
+		IPAddress:  c.Self.IPAddress,
 	}
 
 	jsonData, err := json.Marshal(ackMsg)
@@ -674,7 +672,7 @@ func (c *Client) handleDiscoveryAck(msg Message) {
 	}
 
 	c.MU.Lock()
-	knownPeers[peer.ID] = peer
+	c.KnownPeers[peer.ID] = &peer
 	c.MU.Unlock()
 }
 
@@ -747,9 +745,9 @@ func (c *Client) handleTransferRequest(msg Message) {
 func (c *Client) showMainMenu() string {
 	var option string
 
-	peersMutex.RLock()
-	peerCount := len(knownPeers)
-	peersMutex.RUnlock()
+	c.MU.RLock()
+	peerCount := len(c.KnownPeers)
+	c.MU.RUnlock()
 
 	form := huh.NewForm(
 		huh.NewGroup(

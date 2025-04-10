@@ -8,7 +8,7 @@ import (
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	client := gobyte.NewClient(&cancel)
+	client := gobyte.NewClient(ctx)
 
-	client.Run(ctx)
+	client.Run(ctx, cancel)
 }

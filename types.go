@@ -1,9 +1,6 @@
 package gobyte
 
 import (
-	"context"
-	"sync"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -44,14 +41,6 @@ type Message struct {
 	Files      []FileInfo  `json:"files,omitempty"`
 	Peers      []string    `json:"peers,omitempty"`
 }
-
-var (
-	localPeer                     Peer
-	knownPeers                    = make(map[string]Peer)
-	peersMutex                    sync.RWMutex
-	selectedFiles                 []FileInfo
-	discoveryCtx, discoveryCancel = context.WithCancel(context.Background())
-)
 
 var (
 	TITLE = lipgloss.NewStyle().
