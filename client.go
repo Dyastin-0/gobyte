@@ -424,11 +424,11 @@ func (c *Client) listen() {
 
 			switch msg.Type {
 			case TypeDiscovery:
-				handleDiscoveryMessage(msg, remoteAddr, conn)
+				c.handleDiscoveryMessage(msg, remoteAddr, conn)
 			case TypeDiscoveryAck:
-				handleDiscoveryAck(msg)
+				c.handleDiscoveryAck(msg)
 			case TypeTransferReq:
-				handleTransferRequest(msg)
+				c.handleTransferRequest(msg)
 			}
 		}
 	}
@@ -503,7 +503,7 @@ func (c *Client) runInteractiveMode() {
 	}()
 
 	for {
-		option := showMainMenu()
+		option := c.showMainMenu()
 		switch option {
 		case "send":
 			c.sendFiles()
@@ -583,9 +583,9 @@ func (c *Client) listenWithTimeout(ctx context.Context) {
 
 			switch msg.Type {
 			case TypeDiscovery:
-				handleDiscoveryMessage(msg, remoteAddr, conn)
+				c.handleDiscoveryMessage(msg, remoteAddr, conn)
 			case TypeDiscoveryAck:
-				handleDiscoveryAck(msg)
+				c.handleDiscoveryAck(msg)
 			}
 		}
 	}
@@ -634,4 +634,141 @@ func (c *Client) displayPeers() {
 	for _, peer := range knownPeers {
 		fmt.Printf("%-20s %-15s %s\n", peer.Name, peer.IPAddress, peer.ID)
 	}
+}
+
+func (c *Client) handleDiscoveryMessage(msg Message, remoteAddr *net.UDPAddr, conn *net.UDPConn) {
+	peer := Peer{
+		ID:        msg.SenderID,
+		Name:      msg.SenderName,
+		IPAddress: msg.IPAddress,
+	}
+
+	peersMutex.Lock()
+	knownPeers[peer.ID] = peer
+	peersMutex.Unlock()
+
+	ackMsg := Message{
+		Type:       TypeDiscoveryAck,
+		SenderID:   localPeer.ID,
+		SenderName: localPeer.Name,
+		IPAddress:  localPeer.IPAddress,
+	}
+
+	jsonData, err := json.Marshal(ackMsg)
+	if err != nil {
+		fmt.Printf("Error marshaling ack message: %v\n", err)
+		return
+	}
+
+	_, err = conn.WriteToUDP(jsonData, remoteAddr)
+	if err != nil {
+		fmt.Printf("Error sending discovery ack: %v\n", err)
+	}
+}
+
+func (c *Client) handleDiscoveryAck(msg Message) {
+	peer := Peer{
+		ID:        msg.SenderID,
+		Name:      msg.SenderName,
+		IPAddress: msg.IPAddress,
+	}
+
+	c.MU.Lock()
+	knownPeers[peer.ID] = peer
+	c.MU.Unlock()
+}
+
+func (c *Client) handleTransferRequest(msg Message) {
+	go func() {
+		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
+		if err != nil {
+			fmt.Printf("Error setting up file receiver: %v\n", err)
+			return
+		}
+		defer listener.Close()
+
+		fmt.Printf("\nIncoming file transfer from %s...\n", msg.SenderName)
+
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Printf("Error accepting connection: %v\n", err)
+			return
+		}
+		defer conn.Close()
+
+		downloadDir := filepath.Join(".", "files")
+		if err := os.MkdirAll(downloadDir, 0755); err != nil {
+			fmt.Printf("Error creating downloads directory: %v\n", err)
+			return
+		}
+
+		for _, fileInfo := range msg.Files {
+			fmt.Printf("Receiving %s (%d bytes)...\n", fileInfo.Name, fileInfo.Size)
+
+			filePath := filepath.Join(downloadDir, fileInfo.Name)
+			file, err := os.Create(filePath)
+			if err != nil {
+				fmt.Printf("Error creating file: %v\n", err)
+				continue
+			}
+
+			received := int64(0)
+			buffer := make([]byte, maxBufferSize)
+
+			for received < fileInfo.Size {
+				n, err := conn.Read(buffer)
+				if err != nil && err != io.EOF {
+					fmt.Printf("Error receiving file data: %v\n", err)
+					break
+				}
+
+				if n == 0 {
+					break
+				}
+
+				_, err = file.Write(buffer[:n])
+				if err != nil {
+					fmt.Printf("Error writing to file: %v\n", err)
+					break
+				}
+
+				received += int64(n)
+				fmt.Printf("Progress: %d%%", int(float64(received)/float64(fileInfo.Size)*100))
+			}
+
+			file.Close()
+			fmt.Printf("Saved to %s\n", filePath)
+		}
+
+		fmt.Println("File transfer complete")
+	}()
+}
+
+func (c *Client) showMainMenu() string {
+	var option string
+
+	peersMutex.RLock()
+	peerCount := len(knownPeers)
+	peersMutex.RUnlock()
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("What would you like to do?").
+				Options(
+					huh.NewOption(fmt.Sprintf("Send Files (%d peers available)", peerCount), "send"),
+					huh.NewOption("Refresh Peer List", "refresh"),
+					huh.NewOption("Quit", "quit"),
+				).
+				Value(&option),
+		),
+	)
+
+	err := form.Run()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return "quit"
+	}
+
+	return option
 }
