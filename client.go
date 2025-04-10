@@ -18,11 +18,12 @@ import (
 )
 
 type Client struct {
-	Self          *Peer
-	Hostname      string
-	KnownPeers    map[string]*Peer
-	SelectedFiles []FileInfo
-	MU            sync.RWMutex
+	Self            *Peer
+	Hostname        string
+	KnownPeers      map[string]*Peer
+	SelectedFiles   []FileInfo
+	MU              sync.RWMutex
+	transferReqChan chan Message
 }
 
 func NewClient(ctx context.Context) Client {
@@ -30,15 +31,15 @@ func NewClient(ctx context.Context) Client {
 	if err != nil {
 		hostname = "unknown-host"
 	}
-
 	return Client{
 		Self: &Peer{
 			ID:        fmt.Sprintf("%s-%s", hostname, uuid.New()),
 			Name:      hostname,
 			IPAddress: getLocalIP(),
 		},
-		KnownPeers:    make(map[string]*Peer),
-		SelectedFiles: make([]FileInfo, 6),
+		KnownPeers:      make(map[string]*Peer),
+		SelectedFiles:   make([]FileInfo, 0),
+		transferReqChan: make(chan Message, 10),
 	}
 }
 
@@ -78,7 +79,6 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 					fmt.Println("Discovering peers...")
 					c.discoverPeers(5)
 					c.displayPeers()
-
 					return nil
 				},
 			},
@@ -109,36 +109,30 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 					if err != nil {
 						return err
 					}
-
 					if cmd.Bool("interactive") {
 						c.discoverPeers(3)
 						peers, err := c.selectPeers()
 						if err != nil || len(peers) == 0 {
 							return fmt.Errorf("no peers selected")
 						}
-
 						for _, peer := range peers {
 							c.sendFilesTo(&peer, files)
 						}
 					} else if len(cmd.StringSlice("peer")) > 0 {
 						c.discoverPeers(3)
-
 						for _, peerID := range cmd.StringSlice("peer") {
 							c.MU.RLock()
 							peer, exists := c.KnownPeers[peerID]
 							c.MU.RUnlock()
-
 							if !exists {
 								fmt.Printf("Peer ID %s not found\n", peerID)
 								continue
 							}
-
 							c.sendFilesTo(peer, files)
 						}
 					} else {
 						return fmt.Errorf("must specify peers with --peer or use --interactive")
 					}
-
 					return nil
 				},
 			},
@@ -159,13 +153,12 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 					if err := os.MkdirAll(downloadDir, 0755); err != nil {
 						return err
 					}
-
 					fmt.Printf("Listening for incoming files. Files will be saved to %s\n", downloadDir)
 
-					func() {
-						go c.listen(ctx)
-						go c.broadcastPresence(ctx)
-					}()
+					go c.handleTransferRequests(ctx, downloadDir)
+
+					go c.listen(ctx)
+					go c.broadcastPresence(ctx)
 
 					<-ctx.Done()
 					return nil
@@ -173,7 +166,6 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 			},
 		},
 	}
-
 	if err := app.Run(ctx, os.Args); err != nil {
 		panic(err)
 	}
@@ -213,21 +205,33 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 		conn.Close()
 		return
 	}
-
 	conn.Close()
 
-	time.Sleep(1 * time.Second)
+	fmt.Printf("Transfer request sent to %s. Waiting for acceptance...\n", peer.Name)
+	time.Sleep(2 * time.Second)
 
-	tcpConn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", peer.IPAddress, transferPort))
+	tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
+	fmt.Printf("Connecting to %s for file transfer...\n", tcpAddr)
+
+	var tcpConn net.Conn
+	for attempts := 0; attempts < 5; attempts++ {
+		tcpConn, err = net.Dial("tcp", tcpAddr)
+		if err == nil {
+			break
+		}
+		fmt.Printf("Connection attempt %d failed: %v. Retrying...\n", attempts+1, err)
+		time.Sleep(1 * time.Second)
+	}
+
 	if err != nil {
-		fmt.Printf("Error connecting to peer for file transfer: %v\n", err)
+		fmt.Printf("Failed to connect to peer after multiple attempts: %v\n", err)
 		return
 	}
+
 	defer tcpConn.Close()
 
 	for _, fileInfo := range files {
 		fmt.Printf("Sending %s to %s...\n", fileInfo.Name, peer.Name)
-
 		file, err := os.Open(fileInfo.Path)
 		if err != nil {
 			fmt.Printf("Error opening file: %v\n", err)
@@ -243,18 +247,17 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 				fmt.Printf("Error reading file: %v\n", err)
 				break
 			}
-
 			if n == 0 {
 				break
 			}
 
-			_, err = tcpConn.Write(buffer[:n])
+			written, err := tcpConn.Write(buffer[:n])
 			if err != nil {
 				fmt.Printf("Error sending file data: %v\n", err)
 				break
 			}
 
-			sent += int64(n)
+			sent += int64(written)
 			fmt.Printf("\rProgress: %d%%", int(float64(sent)/float64(fileInfo.Size)*100))
 		}
 
@@ -283,7 +286,6 @@ func (c *Client) selectPeers() ([]Peer, error) {
 	}
 
 	var selectedPeerIDs []string
-
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
@@ -337,14 +339,16 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 			if enterr != nil {
 				continue
 			}
-
 			option := fmt.Sprintf("%s (%s)", entry.Name(), formatSize(fileInfo.Size()))
 			fileOptions = append(fileOptions, huh.NewOption(option, entry.Name()))
 		}
 	}
 
-	var selectedFileNames []string
+	if len(fileOptions) == 0 {
+		return nil, fmt.Errorf("no files found in current directory")
+	}
 
+	var selectedFileNames []string
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
@@ -359,13 +363,16 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 		return nil, err
 	}
 
+	if len(selectedFileNames) == 0 {
+		return nil, fmt.Errorf("no files selected")
+	}
+
 	var selectedFiles []FileInfo
 	for _, name := range selectedFileNames {
 		fileInfo, err := os.Stat(name)
 		if err != nil {
 			continue
 		}
-
 		selectedFiles = append(selectedFiles, FileInfo{
 			Name: name,
 			Size: fileInfo.Size(),
@@ -374,6 +381,98 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 	}
 
 	return selectedFiles, nil
+}
+
+func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-c.transferReqChan:
+			fmt.Printf("\nFile transfer request from %s\n", msg.SenderName)
+
+			confirm := c.showConfirm(fmt.Sprintf("Accept %d files from %s?", len(msg.Files), msg.SenderName))
+
+			if !confirm {
+				fmt.Println(INFO.Render("Files rejected."))
+				continue
+			}
+
+			listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
+			if err != nil {
+				fmt.Printf("Error setting up file receiver: %v\n", err)
+				continue
+			}
+
+			listener.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
+
+			fmt.Printf("Waiting for connection from %s...\n", msg.SenderName)
+
+			go func(listener net.Listener, msg Message) {
+				defer listener.Close()
+
+				conn, err := listener.Accept()
+				if err != nil {
+					fmt.Printf("Error accepting connection: %v\n", err)
+					return
+				}
+
+				defer conn.Close()
+				fmt.Printf("Connected to %s. Receiving files...\n", msg.SenderName)
+
+				if err := os.MkdirAll(downloadDir, 0755); err != nil {
+					fmt.Printf("Error creating downloads directory: %v\n", err)
+					return
+				}
+
+				for _, fileInfo := range msg.Files {
+					fmt.Printf("Receiving %s (%s)...\n", fileInfo.Name, formatSize(fileInfo.Size))
+					filePath := filepath.Join(downloadDir, fileInfo.Name)
+
+					if _, err := os.Stat(filePath); err == nil {
+						base := filepath.Base(fileInfo.Name)
+						ext := filepath.Ext(base)
+						name := strings.TrimSuffix(base, ext)
+						filePath = filepath.Join(downloadDir, fmt.Sprintf("%s_%d%s", name, time.Now().Unix(), ext))
+					}
+
+					file, err := os.Create(filePath)
+					if err != nil {
+						fmt.Printf("Error creating file: %v\n", err)
+						continue
+					}
+
+					received := int64(0)
+					buffer := make([]byte, maxBufferSize)
+
+					for received < fileInfo.Size {
+						n, err := conn.Read(buffer)
+						if err != nil && err != io.EOF {
+							fmt.Printf("Error receiving file data: %v\n", err)
+							break
+						}
+						if n == 0 {
+							break
+						}
+
+						_, err = file.Write(buffer[:n])
+						if err != nil {
+							fmt.Printf("Error writing to file: %v\n", err)
+							break
+						}
+
+						received += int64(n)
+						fmt.Printf("\rProgress: %d%%", int(float64(received)/float64(fileInfo.Size)*100))
+					}
+
+					file.Close()
+					fmt.Printf("\nSaved to %s\n", filePath)
+				}
+
+				fmt.Println("File transfer complete")
+			}(listener, msg)
+		}
+	}
 }
 
 func (c *Client) listen(ctx context.Context) {
@@ -390,23 +489,24 @@ func (c *Client) listen(ctx context.Context) {
 	}
 	defer conn.Close()
 
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 2048)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+			conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 
 			n, remoteAddr, err := conn.ReadFromUDP(buffer)
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 					continue
 				}
-				fmt.Printf("Error reading from UDP: %v\n", err)
+
+				if !strings.Contains(err.Error(), "i/o timeout") {
+					fmt.Printf("Error reading from UDP: %v\n", err)
+				}
 				continue
 			}
 
@@ -423,10 +523,16 @@ func (c *Client) listen(ctx context.Context) {
 			switch msg.Type {
 			case TypeDiscovery:
 				c.handleDiscoveryMessage(msg, remoteAddr, conn)
+
 			case TypeDiscoveryAck:
 				c.handleDiscoveryAck(msg)
+
 			case TypeTransferReq:
-				c.handleTransferRequest(msg)
+				select {
+				case c.transferReqChan <- msg:
+				default:
+					fmt.Printf("Warning: Transfer request channel full, dropping request from %s\n", msg.SenderName)
+				}
 			}
 		}
 	}
@@ -439,6 +545,30 @@ func (c *Client) refreshPeers() {
 	c.KnownPeers = make(map[string]*Peer)
 	c.MU.Unlock()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go func() {
+		for i := 0; i < 3; i++ {
+			c.broadcastDiscovery()
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
+
+	<-ctx.Done()
+
+	c.MU.RLock()
+	peerCount := len(c.KnownPeers)
+	c.MU.RUnlock()
+
+	if peerCount > 0 {
+		fmt.Printf(INFO.Render("Found %d peers on the network.\n"), peerCount)
+	} else {
+		fmt.Println(INFO.Render("No peers found."))
+	}
+}
+
+func (c *Client) broadcastDiscovery() {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", broadcastAddr, discoveryPort))
 	if err != nil {
 		fmt.Printf("Error resolving broadcast address: %v\n", err)
@@ -453,14 +583,6 @@ func (c *Client) refreshPeers() {
 	defer conn.Close()
 
 	c.sendDiscoveryBroadcast(conn)
-
-	c.MU.RLock()
-	if len(c.KnownPeers) > 0 {
-		fmt.Printf(INFO.Render("Found %d peers on the network.\n"), len(c.KnownPeers))
-	} else {
-		fmt.Println(INFO.Render("No peers found."))
-	}
-	c.MU.RUnlock()
 }
 
 func (c *Client) broadcastPresence(ctx context.Context) {
@@ -477,10 +599,10 @@ func (c *Client) broadcastPresence(ctx context.Context) {
 	}
 	defer conn.Close()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
 	c.sendDiscoveryBroadcast(conn)
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -495,18 +617,23 @@ func (c *Client) broadcastPresence(ctx context.Context) {
 func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFunc) {
 	fmt.Println(INFO.Render("Discovering peers on your network..."))
 
-	func() {
-		go c.listen(ctx)
-		go c.broadcastPresence(ctx)
-	}()
+	go c.handleTransferRequests(ctx, "./files")
+
+	go c.listen(ctx)
+	go c.broadcastPresence(ctx)
+
+	c.refreshPeers()
 
 	for {
 		option := c.showMainMenu()
+
 		switch option {
 		case "send":
 			c.sendFiles()
+
 		case "refresh":
 			c.refreshPeers()
+
 		case "quit":
 			cancel()
 			fmt.Println("Goodbye!")
@@ -529,63 +656,12 @@ func (c *Client) sendDiscoveryBroadcast(conn *net.UDPConn) {
 		return
 	}
 
-	_, err = conn.Write(jsonData)
-	if err != nil {
-		fmt.Printf("Error sending discovery broadcast: %v\n", err)
-	}
-}
-
-func (c *Client) listenWithTimeout(ctx context.Context) {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", discoveryPort))
-	if err != nil {
-		fmt.Printf("Error resolving UDP address: %v\n", err)
-		return
-	}
-
-	conn, err := net.ListenUDP("udp", addr)
-	if err != nil {
-		fmt.Printf("Error listening on UDP: %v\n", err)
-		return
-	}
-	defer conn.Close()
-
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-
-	buffer := make([]byte, 1024)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-
-			n, remoteAddr, err := conn.ReadFromUDP(buffer)
-			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue
-				}
-				fmt.Printf("Error reading from UDP: %v\n", err)
-				continue
-			}
-
-			var msg Message
-			if err := json.Unmarshal(buffer[:n], &msg); err != nil {
-				fmt.Printf("Error unmarshaling message: %v\n", err)
-				continue
-			}
-
-			if msg.SenderID == c.Self.ID {
-				continue
-			}
-
-			switch msg.Type {
-			case TypeDiscovery:
-				c.handleDiscoveryMessage(msg, remoteAddr, conn)
-			case TypeDiscoveryAck:
-				c.handleDiscoveryAck(msg)
-			}
+	for i := 0; i < 3; i++ {
+		_, err = conn.Write(jsonData)
+		if err != nil {
+			fmt.Printf("Error sending discovery broadcast: %v\n", err)
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -593,22 +669,16 @@ func (c *Client) discoverPeers(timeoutSeconds int) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 
-	go c.listenWithTimeout(ctx)
+	c.MU.Lock()
+	c.KnownPeers = make(map[string]*Peer)
+	c.MU.Unlock()
 
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", broadcastAddr, discoveryPort))
-	if err != nil {
-		fmt.Printf("Error resolving broadcast address: %v\n", err)
-		return
-	}
-
-	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		fmt.Printf("Error creating UDP connection: %v\n", err)
-		return
-	}
-	defer conn.Close()
-
-	c.sendDiscoveryBroadcast(conn)
+	go func() {
+		for i := 0; i < 3; i++ {
+			c.broadcastDiscovery()
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
 
 	<-ctx.Done()
 }
@@ -621,8 +691,6 @@ func (c *Client) displayPeers() {
 		fmt.Println(INFO.Render("No peers found on the network."))
 		return
 	}
-
-	fmt.Printf("len %d", len(c.KnownPeers))
 
 	fmt.Printf(INFO.Render("Found %d peers on the network:\n"), len(c.KnownPeers))
 	fmt.Println(strings.Repeat("-", 50))
@@ -676,70 +744,26 @@ func (c *Client) handleDiscoveryAck(msg Message) {
 	c.MU.Unlock()
 }
 
-func (c *Client) handleTransferRequest(msg Message) {
-	go func() {
-		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
-		if err != nil {
-			fmt.Printf("Error setting up file receiver: %v\n", err)
-			return
-		}
-		defer listener.Close()
+func (c *Client) showConfirm(title string) bool {
+	var confirm bool
 
-		fmt.Printf("\nIncoming file transfer from %s...\n", msg.SenderName)
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Affirmative("Yes").
+				Negative("No").
+				Title(title).
+				Value(&confirm),
+		),
+	)
 
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Printf("Error accepting connection: %v\n", err)
-			return
-		}
-		defer conn.Close()
+	err := form.Run()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return false
+	}
 
-		downloadDir := filepath.Join(".", "files")
-		if err := os.MkdirAll(downloadDir, 0755); err != nil {
-			fmt.Printf("Error creating downloads directory: %v\n", err)
-			return
-		}
-
-		for _, fileInfo := range msg.Files {
-			fmt.Printf("Receiving %s (%d bytes)...\n", fileInfo.Name, fileInfo.Size)
-
-			filePath := filepath.Join(downloadDir, fileInfo.Name)
-			file, err := os.Create(filePath)
-			if err != nil {
-				fmt.Printf("Error creating file: %v\n", err)
-				continue
-			}
-
-			received := int64(0)
-			buffer := make([]byte, maxBufferSize)
-
-			for received < fileInfo.Size {
-				n, err := conn.Read(buffer)
-				if err != nil && err != io.EOF {
-					fmt.Printf("Error receiving file data: %v\n", err)
-					break
-				}
-
-				if n == 0 {
-					break
-				}
-
-				_, err = file.Write(buffer[:n])
-				if err != nil {
-					fmt.Printf("Error writing to file: %v\n", err)
-					break
-				}
-
-				received += int64(n)
-				fmt.Printf("Progress: %d%%", int(float64(received)/float64(fileInfo.Size)*100))
-			}
-
-			file.Close()
-			fmt.Printf("Saved to %s\n", filePath)
-		}
-
-		fmt.Println("File transfer complete")
-	}()
+	return confirm
 }
 
 func (c *Client) showMainMenu() string {
@@ -767,6 +791,5 @@ func (c *Client) showMainMenu() string {
 		fmt.Printf("Error: %v\n", err)
 		return "quit"
 	}
-
 	return option
 }
