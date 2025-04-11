@@ -208,22 +208,6 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 		return
 	}
 
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-
-	buffer := make([]byte, 1024)
-	n, _, err := conn.ReadFromUDP(buffer)
-	if err != nil {
-		conn.Close()
-		fmt.Println(ERROR.Render("Request timeout."))
-		return
-	}
-
-	if string(buffer[:n]) != "ACK" {
-		conn.Close()
-		fmt.Println(ERROR.Render("Invalid ACK."))
-		return
-	}
-
 	conn.Close()
 
 	tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
@@ -400,11 +384,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 				fmt.Println(INFO.Render("Files rejected."))
 				continue
 			}
-
-			ackAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", msg.IPAddress, discoveryPort))
-			ackConn, _ := net.DialUDP("udp", nil, ackAddr)
-			ackConn.Write([]byte("ACK"))
-			ackConn.Close()
 
 			listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
 			if err != nil {
