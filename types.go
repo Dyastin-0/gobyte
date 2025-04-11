@@ -45,12 +45,18 @@ type Message struct {
 var (
 	TITLE = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#FAFAFA")).
-		Background(lipgloss.Color("#7D56F4")).
+		Foreground(lipgloss.Color("#fafafa")).
+		Background(lipgloss.Color("#7d56f4")).
 		Padding(0, 1)
 
 	INFO = lipgloss.NewStyle().
 		Italic(true).
 		Foreground(lipgloss.Color("#888888"))
-	SUCCESS = lipgloss.NewStyle().Foreground(lipgloss.Color("#28a745"))
+
+	SUCCESS = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#28a745"))
+
+	ERROR = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#ee4b2b"))
 )

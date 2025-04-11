@@ -207,26 +207,30 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 		conn.Close()
 		return
 	}
-	conn.Close()
 
-	fmt.Printf("Transfer request sent to %s. Waiting for acceptance...\n", peer.Name)
-	time.Sleep(2 * time.Second)
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 
-	tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
-	fmt.Printf("Connecting to %s for file transfer...\n", tcpAddr)
-
-	var tcpConn net.Conn
-	for attempts := 0; attempts < 5; attempts++ {
-		tcpConn, err = net.Dial("tcp", tcpAddr)
-		if err == nil {
-			break
-		}
-		fmt.Printf("Connection attempt %d failed: %v. Retrying...\n", attempts+1, err)
-		time.Sleep(1 * time.Second)
+	buffer := make([]byte, 1024)
+	n, _, err := conn.ReadFromUDP(buffer)
+	if err != nil {
+		conn.Close()
+		fmt.Println(ERROR.Render("Request timeout."))
+		return
 	}
 
+	if string(buffer[:n]) != "ACK" {
+		conn.Close()
+		fmt.Println(ERROR.Render("Invalid ACK."))
+		return
+	}
+
+	conn.Close()
+
+	tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
+
+	tcpConn, err := net.DialTimeout("tcp", tcpAddr, time.Minute*60)
 	if err != nil {
-		fmt.Printf("Failed to connect to peer after multiple attempts: %v\n", err)
+		fmt.Println(ERROR.Render(err.Error()))
 		return
 	}
 
@@ -397,6 +401,11 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 				continue
 			}
 
+			ackAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", msg.IPAddress, discoveryPort))
+			ackConn, _ := net.DialUDP("udp", nil, ackAddr)
+			ackConn.Write([]byte("ACK"))
+			ackConn.Close()
+
 			listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
 			if err != nil {
 				fmt.Printf("Error setting up file receiver: %v\n", err)
@@ -405,7 +414,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
 
-			fmt.Println(INFO.Render(fmt.Sprintf("Connecting to %s...", msg.SenderName)))
+			fmt.Println(INFO.Render("Connecting..."))
 
 			go func(listener net.Listener, msg Message) {
 				defer listener.Close()
@@ -560,15 +569,10 @@ func (c *Client) refreshPeers() {
 	c.KnownPeers = make(map[string]*Peer)
 	c.MU.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	go func() {
-		for i := 0; i < 3; i++ {
-			c.broadcastDiscovery()
-			time.Sleep(500 * time.Millisecond)
-		}
-	}()
+	c.broadcastDiscovery()
 
 	<-ctx.Done()
 
