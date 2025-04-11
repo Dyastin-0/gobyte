@@ -20,12 +20,13 @@ import (
 )
 
 type Client struct {
-	Self            *Peer
-	Hostname        string
-	KnownPeers      map[string]*Peer
-	SelectedFiles   []FileInfo
-	MU              sync.RWMutex
-	transferReqChan chan Message
+	Self             *Peer
+	Hostname         string
+	KnownPeers       map[string]*Peer
+	SelectedFiles    []FileInfo
+	MU               sync.RWMutex
+	transferReqChan  chan Message
+	PendingTransfers map[string]chan bool
 }
 
 func NewClient(ctx context.Context) Client {
@@ -39,9 +40,10 @@ func NewClient(ctx context.Context) Client {
 			Name:      hostname,
 			IPAddress: getLocalIP(),
 		},
-		KnownPeers:      make(map[string]*Peer),
-		SelectedFiles:   make([]FileInfo, 0),
-		transferReqChan: make(chan Message, 10),
+		KnownPeers:       make(map[string]*Peer),
+		SelectedFiles:    make([]FileInfo, 0),
+		transferReqChan:  make(chan Message, 10),
+		PendingTransfers: make(map[string]chan bool),
 	}
 }
 
@@ -174,85 +176,119 @@ func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 }
 
 func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
+	// Generate a unique transfer ID
+	transferID := uuid.New().String()
+
+	// Create UDP connection for sending the request
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, discoveryPort))
 	if err != nil {
 		fmt.Printf("Error resolving peer address: %v\n", err)
 		return
 	}
-
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		fmt.Printf("Error creating UDP connection: %v\n", err)
 		return
 	}
 
+	// Create a channel to receive the acceptance response
+	ackChan := make(chan bool)
+
+	// Register this transfer in a map of pending transfers
+	c.MU.Lock()
+	if c.PendingTransfers == nil {
+		c.PendingTransfers = make(map[string]chan bool)
+	}
+	c.PendingTransfers[transferID] = ackChan
+	c.MU.Unlock()
+
+	// Clean up when done
+	defer func() {
+		conn.Close()
+		c.MU.Lock()
+		delete(c.PendingTransfers, transferID)
+		c.MU.Unlock()
+	}()
+
+	// Send the transfer request
 	msg := Message{
 		Type:       TypeTransferReq,
 		SenderID:   c.Self.ID,
 		SenderName: c.Self.Name,
 		IPAddress:  c.Self.IPAddress,
 		Files:      files,
+		TransferID: transferID,
 	}
 
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
 		fmt.Printf("Error marshaling transfer request: %v\n", err)
-		conn.Close()
 		return
 	}
 
 	_, err = conn.Write(jsonData)
 	if err != nil {
 		fmt.Printf("Error sending transfer request: %v\n", err)
-		conn.Close()
 		return
 	}
 
-	conn.Close()
+	fmt.Printf("Transfer request sent to %s. Waiting for acceptance...\n", peer.Name)
 
-	tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
+	// Wait for acceptance with a timeout
+	select {
+	case accepted := <-ackChan:
+		if !accepted {
+			fmt.Printf("%s rejected the file transfer.\n", peer.Name)
+			return
+		}
+		fmt.Printf("%s accepted the file transfer. Sending files...\n", peer.Name)
 
-	tcpConn, err := net.DialTimeout("tcp", tcpAddr, time.Minute*60)
-	if err != nil {
-		fmt.Println(ERROR.Render(err.Error()))
-		return
-	}
-
-	defer tcpConn.Close()
-
-	writer := bufio.NewWriter(tcpConn)
-	defer writer.Flush()
-
-	for _, fileInfo := range files {
-		fmt.Printf("Sending %s to %s...\n", fileInfo.Name, peer.Name)
-		file, err := os.Open(fileInfo.Path)
+		// Proceed with file transfer
+		tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
+		tcpConn, err := net.DialTimeout("tcp", tcpAddr, time.Minute*60)
 		if err != nil {
-			fmt.Printf("Error opening file: %v\n", err)
-			continue
+			fmt.Println(ERROR.Render(err.Error()))
+			return
+		}
+		defer tcpConn.Close()
+
+		writer := bufio.NewWriter(tcpConn)
+		defer writer.Flush()
+
+		for _, fileInfo := range files {
+			fmt.Printf("Sending %s to %s...\n", fileInfo.Name, peer.Name)
+			file, err := os.Open(fileInfo.Path)
+			if err != nil {
+				fmt.Printf("Error opening file: %v\n", err)
+				continue
+			}
+
+			header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
+			if _, err = writer.WriteString(header); err != nil {
+				fmt.Printf("Error sending file header: %v\n", err)
+				file.Close()
+				continue
+			}
+			writer.Flush()
+
+			sent, err := io.CopyN(writer, file, fileInfo.Size)
+			if err != nil {
+				fmt.Printf("Error sending file data: %v\n", err)
+				file.Close()
+				continue
+			}
+			file.Close()
+			fmt.Printf("\nSent %s (%d bytes)\n", fileInfo.Name, sent)
 		}
 
-		header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
-		if _, err = writer.WriteString(header); err != nil {
-			fmt.Printf("Error sending file header: %v\n", err)
-			file.Close()
-			continue
-		}
+		writer.WriteString("END\n")
 		writer.Flush()
+		fmt.Printf("All files sent to %s\n", peer.Name)
 
-		sent, err := io.CopyN(writer, file, fileInfo.Size)
-		if err != nil {
-			fmt.Printf("Error sending file data: %v\n", err)
-			file.Close()
-			continue
-		}
-
-		file.Close()
-		fmt.Printf("\nSent %s (%d bytes)\n", fileInfo.Name, sent)
+	case <-time.After(30 * time.Second):
+		fmt.Printf("Timeout waiting for %s to accept the transfer.\n", peer.Name)
+		return
 	}
-
-	writer.WriteString("END\n")
-	writer.Flush()
-	fmt.Printf("All files sent to %s\n", peer.Name)
 }
 
 func (c *Client) selectPeers() ([]Peer, error) {
@@ -384,17 +420,54 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 			return
 		case msg := <-c.transferReqChan:
 			fmt.Println(INFO.Render(fmt.Sprintf("\nFile chomping request from %s", msg.SenderName)))
-
 			confirm := c.showConfirm(fmt.Sprintf("Accept %d files from %s?", len(msg.Files), msg.SenderName))
+
+			// Send acceptance response back
+			responseAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", msg.IPAddress, discoveryPort))
+			if err != nil {
+				fmt.Printf("Error resolving sender address: %v\n", err)
+				continue
+			}
+
+			respConn, err := net.DialUDP("udp", nil, responseAddr)
+			if err != nil {
+				fmt.Printf("Error creating UDP connection: %v\n", err)
+				continue
+			}
+
+			// Create and send the response
+			response := Message{
+				Type:       TypeTransferAck,
+				SenderID:   c.Self.ID,
+				SenderName: c.Self.Name,
+				IPAddress:  c.Self.IPAddress,
+				Accepted:   confirm,
+				TransferID: msg.TransferID,
+			}
+
+			jsonResponse, err := json.Marshal(response)
+			if err != nil {
+				fmt.Printf("Error marshaling response: %v\n", err)
+				respConn.Close()
+				continue
+			}
+
+			_, err = respConn.Write(jsonResponse)
+			if err != nil {
+				fmt.Printf("Error sending response: %v\n", err)
+				respConn.Close()
+				continue
+			}
+			respConn.Close()
 
 			if !confirm {
 				fmt.Println(INFO.Render("Files rejected."))
 				continue
 			}
 
+			// If accepted, prepare to receive files
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(30 * time.Second))
-
-			fmt.Println(INFO.Render("Connecting..."))
+			fmt.Println(INFO.Render("Waiting for connection..."))
 
 			go func(listener net.Listener, msg Message) {
 				conn, err := listener.Accept()
@@ -410,8 +483,8 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 					return
 				}
 
+				// Rest of the file receiving logic remains the same
 				reader := bufio.NewReader(conn)
-
 				for {
 					header, err := reader.ReadString('\n')
 					if err != nil {
@@ -421,31 +494,25 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 						fmt.Printf("Error reading header: %v\n", err)
 						return
 					}
-
 					header = strings.TrimSpace(header)
-
 					if header == "END" {
 						break
 					}
-
 					if !strings.HasPrefix(header, "FILE:") {
 						fmt.Printf("Invalid header format: %s\n", header)
 						return
 					}
-
 					parts := strings.Split(header, ":")
 					if len(parts) != 3 {
 						fmt.Printf("Invalid header format: %s\n", header)
 						return
 					}
-
 					fileName := parts[1]
 					fileSize, err := strconv.ParseInt(parts[2], 10, 64)
 					if err != nil {
 						fmt.Printf("Invalid file size: %v\n", err)
 						return
 					}
-
 					filePath := filepath.Join(downloadDir, fileName)
 					if _, err = os.Stat(filePath); err == nil {
 						base := filepath.Base(fileName)
@@ -453,24 +520,20 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 						name := strings.TrimSuffix(base, ext)
 						filePath = filepath.Join(downloadDir, fmt.Sprintf("%s_%d%s", name, time.Now().Unix(), ext))
 					}
-
 					file, err := os.Create(filePath)
 					if err != nil {
 						fmt.Printf("Error creating file: %v\n", err)
 						return
 					}
-
 					received, err := io.CopyN(file, reader, fileSize)
 					if err != nil {
 						fmt.Printf("Error receiving file data: %v\n", err)
 						file.Close()
 						return
 					}
-
 					file.Close()
 					fmt.Println(INFO.Render(fmt.Sprintf("Received %s (%d bytes)\n", fileName, received)))
 				}
-
 				fmt.Println(SUCCESS.Render("File chomping complete ✓"))
 			}(listener, msg)
 		}
@@ -492,20 +555,17 @@ func (c *Client) listen(ctx context.Context) {
 	defer conn.Close()
 
 	buffer := make([]byte, 2048)
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-
 			n, remoteAddr, err := conn.ReadFromUDP(buffer)
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 					continue
 				}
-
 				if !strings.Contains(err.Error(), "i/o timeout") {
 					fmt.Printf("Error reading from UDP: %v\n", err)
 				}
@@ -525,15 +585,21 @@ func (c *Client) listen(ctx context.Context) {
 			switch msg.Type {
 			case TypeDiscovery:
 				c.handleDiscoveryMessage(msg, remoteAddr, conn)
-
 			case TypeDiscoveryAck:
 				c.handleDiscoveryAck(msg)
-
 			case TypeTransferReq:
 				select {
 				case c.transferReqChan <- msg:
 				default:
 					fmt.Printf("Warning: Transfer request channel full, dropping request from %s\n", msg.SenderName)
+				}
+			case TypeTransferAck:
+				c.MU.RLock()
+				ch, exists := c.PendingTransfers[msg.TransferID]
+				c.MU.RUnlock()
+
+				if exists {
+					ch <- msg.Accepted
 				}
 			}
 		}

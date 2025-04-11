@@ -27,19 +27,20 @@ type FileInfo struct {
 type MessageType string
 
 const (
-	TypeDiscovery    MessageType = "discovery"
-	TypeDiscoveryAck MessageType = "discovery_ack"
-	TypeTransferReq  MessageType = "transfer_req"
-	TypeTransferAck  MessageType = "transfer_ack"
+	TypeDiscovery    = "discovery"
+	TypeDiscoveryAck = "discovery_ack"
+	TypeTransferReq  = "transfer_req"
+	TypeTransferAck  = "transfer_ack"
 )
 
 type Message struct {
-	Type       MessageType `json:"type"`
-	SenderID   string      `json:"sender_id"`
-	SenderName string      `json:"sender_name"`
-	IPAddress  string      `json:"ip_address"`
-	Files      []FileInfo  `json:"files,omitempty"`
-	Peers      []string    `json:"peers,omitempty"`
+	Type       string     `json:"type"`
+	SenderID   string     `json:"sender_id"`
+	SenderName string     `json:"sender_name"`
+	IPAddress  string     `json:"ip_address"`
+	Files      []FileInfo `json:"files,omitempty"`
+	Accepted   bool       `json:"accepted,omitempty"`
+	TransferID string     `json:"transfer_id,omitempty"`
 }
 
 var (
