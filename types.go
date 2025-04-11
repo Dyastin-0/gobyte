@@ -46,9 +46,7 @@ type Message struct {
 var (
 	TITLE = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("#fafafa")).
-		Background(lipgloss.Color("#7d56f4")).
-		Padding(0, 1)
+		Foreground(lipgloss.Color("#7d56f4"))
 
 	INFO = lipgloss.NewStyle().
 		Italic(true).

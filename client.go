@@ -39,6 +39,9 @@ func NewClient(ctx context.Context) *Client {
 
 func (c *Client) Run(ctx context.Context, cancel context.CancelFunc) {
 	app := c.createCLIApp(cancel)
+
+	fmt.Println(TITLE.Render("gobyte"))
+
 	if err := app.Run(ctx, os.Args); err != nil {
 		panic(err)
 	}

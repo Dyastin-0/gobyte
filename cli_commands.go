@@ -13,7 +13,6 @@ func (c *Client) chuckCommand(cancel context.CancelFunc) cli.ActionFunc {
 		if cmd.String("name") != "" {
 			c.Self.Name = cmd.String("name")
 		}
-		fmt.Println(TITLE.Render("GOBYTE"))
 		fmt.Printf("Running as: %s (%s)\n", c.Self.Name, c.Self.IPAddress)
 		c.runInteractiveMode(ctx, cancel)
 

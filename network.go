@@ -137,7 +137,7 @@ func (c *Client) handleChomping(ctx context.Context, downloadDir string) {
 			listener.Close()
 			return
 		case msg := <-c.transferReqChan:
-			fmt.Println(INFO.Render(fmt.Sprintf("File chomping request from %s", msg.SenderName)))
+			fmt.Println(INFO.Render(fmt.Sprintf("File chomping request from %s (%s)", msg.SenderName, msg.IPAddress)))
 			str := "file"
 			if len(msg.Files) > 1 {
 				str += "s"

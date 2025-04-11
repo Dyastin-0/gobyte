@@ -21,9 +21,12 @@ func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFu
 		case "send":
 			c.sendFiles()
 
+		case "peers":
+			c.displayPeers()
+
 		case "quit":
 			cancel()
-			fmt.Println("Goodbye!")
+			fmt.Println(TITLE.Render("gobyte some grass."))
 			return
 		}
 	}
@@ -64,6 +67,7 @@ func (c *Client) showMainMenu() string {
 				Title("What would you like to do?").
 				Options(
 					huh.NewOption(fmt.Sprintf("Send Files (%d peers available)", peerCount), "send"),
+					huh.NewOption("List Peers", "peers"),
 					huh.NewOption("Quit", "quit"),
 				).
 				Value(&option),
@@ -191,4 +195,20 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 	}
 
 	return selectedFiles, nil
+}
+
+func (c *Client) displayPeers() {
+	c.MU.RLock()
+	defer c.MU.RUnlock()
+
+	if len(c.KnownPeers) == 0 {
+		fmt.Println(INFO.Render("No peers found on the network."))
+		return
+	}
+
+	fmt.Println(INFO.Render("Discovered peers:"))
+
+	for _, peer := range c.KnownPeers {
+		fmt.Println(SUCCESS.Render(fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)))
+	}
 }
