@@ -380,6 +380,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 	for {
 		select {
 		case <-ctx.Done():
+			listener.Close()
 			return
 		case msg := <-c.transferReqChan:
 			fmt.Println(INFO.Render(fmt.Sprintf("\nFile chomping request from %s", msg.SenderName)))
@@ -388,7 +389,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 
 			if !confirm {
 				fmt.Println(INFO.Render("Files rejected."))
-				listener.Close()
 				continue
 			}
 
@@ -397,8 +397,6 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 			fmt.Println(INFO.Render("Connecting..."))
 
 			go func(listener net.Listener, msg Message) {
-				defer listener.Close()
-
 				conn, err := listener.Accept()
 				if err != nil {
 					fmt.Printf("Error accepting connection: %v\n", err)
