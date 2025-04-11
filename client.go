@@ -371,23 +371,24 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 }
 
 func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
+	if err != nil {
+		fmt.Printf("Error setting up file receiver: %v\n", err)
+		return
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case msg := <-c.transferReqChan:
-			listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
-			if err != nil {
-				fmt.Printf("Error setting up file receiver: %v\n", err)
-				continue
-			}
-
 			fmt.Println(INFO.Render(fmt.Sprintf("\nFile chomping request from %s", msg.SenderName)))
 
 			confirm := c.showConfirm(fmt.Sprintf("Accept %d files from %s?", len(msg.Files), msg.SenderName))
 
 			if !confirm {
 				fmt.Println(INFO.Render("Files rejected."))
+				listener.Close()
 				continue
 			}
 
