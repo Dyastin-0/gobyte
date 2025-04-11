@@ -1,33 +1,13 @@
 package gobyte
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
-	"time"
 )
 
-func (c *Client) discoverPeers(timeoutSeconds int) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
-	defer cancel()
-
-	c.MU.Lock()
-	c.KnownPeers = make(map[string]*Peer)
-	c.MU.Unlock()
-
-	go func() {
-		for i := 0; i < 3; i++ {
-			c.broadcastDiscovery()
-			time.Sleep(500 * time.Millisecond)
-		}
-	}()
-
-	<-ctx.Done()
-}
-
-func (c *Client) handleDiscoveryMessage(msg Message, remoteAddr *net.UDPAddr, conn *net.UDPConn) {
+func (c *Client) handleDiscovery(msg Message, remoteAddr *net.UDPAddr, conn *net.UDPConn) {
 	peer := Peer{
 		ID:        msg.SenderID,
 		Name:      msg.SenderName,
@@ -67,31 +47,6 @@ func (c *Client) handleDiscoveryAck(msg Message) {
 	c.MU.Lock()
 	c.KnownPeers[peer.ID] = &peer
 	c.MU.Unlock()
-}
-
-func (c *Client) refreshPeers() {
-	fmt.Println(INFO.Render("Refreshing peer list..."))
-
-	c.MU.Lock()
-	c.KnownPeers = make(map[string]*Peer)
-	c.MU.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
-	defer cancel()
-
-	c.broadcastDiscovery()
-
-	<-ctx.Done()
-
-	c.MU.RLock()
-	peerCount := len(c.KnownPeers)
-	c.MU.RUnlock()
-
-	if peerCount > 0 {
-		fmt.Printf(INFO.Render("Found %d peers on the network.\n"), peerCount)
-	} else {
-		fmt.Println(INFO.Render("No peers found."))
-	}
 }
 
 func (c *Client) displayPeers() {

@@ -67,15 +67,15 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 		return
 	}
 
-	fmt.Printf("Transfer request sent to %s. Waiting for acceptance...\n", peer.Name)
+	fmt.Println(INFO.Render(fmt.Sprintf("Request sent to %s. Waiting for response...", peer.Name)))
 
 	select {
 	case accepted := <-ackChan:
 		if !accepted {
-			fmt.Printf("%s rejected the file transfer.\n", peer.Name)
+			fmt.Println(ERROR.Render(fmt.Sprintf("%s rejected the files.", peer.Name)))
 			return
 		}
-		fmt.Println(INFO.Render("%s accepted the file transfer. Sending files...", peer.Name))
+		fmt.Println(SUCCESS.Render(fmt.Sprintf("%s accepted the request.", peer.Name)))
 
 		tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
 		tcpConn, err := net.DialTimeout("tcp", tcpAddr, time.Minute*60)
@@ -89,7 +89,7 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 		defer writer.Flush()
 
 		for _, fileInfo := range files {
-			fmt.Println(INFO.Render(fmt.Sprintf("Sending %s to %s...", fileInfo.Name, peer.Name)))
+			fmt.Println(INFO.Render(fmt.Sprintf("Sending %s...", fileInfo.Name)))
 			file, err := os.Open(fileInfo.Path)
 			if err != nil {
 				fmt.Printf("Error opening file: %v\n", err)
@@ -111,20 +111,20 @@ func (c *Client) sendFilesTo(peer *Peer, files []FileInfo) {
 				continue
 			}
 			file.Close()
-			fmt.Printf("\nSent %s (%d bytes)\n", fileInfo.Name, sent)
+			fmt.Println(SUCCESS.Render(fmt.Sprintf("%s sent (%d bytes)", fileInfo.Name, sent)))
 		}
 
 		writer.WriteString("END\n")
 		writer.Flush()
-		fmt.Println(SUCCESS.Render(fmt.Sprintf("All files sent to %s", peer.Name)))
+		fmt.Println(SUCCESS.Render(fmt.Sprintf("All files sent to %s ✓", peer.Name)))
 
-	case <-time.After(30 * time.Second):
+	case <-time.After(15 * time.Second):
 		fmt.Println(ERROR.Render(fmt.Sprintf("Timeout waiting for %s to accept the transfer.", peer.Name)))
 		return
 	}
 }
 
-func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string) {
+func (c *Client) handleChomping(ctx context.Context, downloadDir string) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", transferPort))
 	if err != nil {
 		fmt.Printf("Error setting up file receiver: %v\n", err)
@@ -137,7 +137,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 			listener.Close()
 			return
 		case msg := <-c.transferReqChan:
-			fmt.Println(INFO.Render(fmt.Sprintf("\nFile chomping request from %s", msg.SenderName)))
+			fmt.Println(INFO.Render(fmt.Sprintf("File chomping request from %s", msg.SenderName)))
 			str := "file"
 			if len(msg.Files) > 1 {
 				str += "s"
@@ -250,7 +250,7 @@ func (c *Client) handleTransferRequests(ctx context.Context, downloadDir string)
 						return
 					}
 					file.Close()
-					fmt.Println(INFO.Render(fmt.Sprintf("Received %s (%d bytes)\n", fileName, received)))
+					fmt.Println(SUCCESS.Render(fmt.Sprintf("Received %s (%d bytes)", fileName, received)))
 				}
 				fmt.Println(SUCCESS.Render("File chomping complete ✓"))
 			}(listener, msg)
@@ -302,7 +302,7 @@ func (c *Client) listen(ctx context.Context) {
 
 			switch msg.Type {
 			case TypeDiscovery:
-				c.handleDiscoveryMessage(msg, remoteAddr, conn)
+				c.handleDiscovery(msg, remoteAddr, conn)
 			case TypeDiscoveryAck:
 				c.handleDiscoveryAck(msg)
 			case TypeTransferReq:
@@ -340,7 +340,7 @@ func (c *Client) broadcastPresence(ctx context.Context) {
 
 	c.sendDiscoveryBroadcast(conn)
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -367,28 +367,8 @@ func (c *Client) sendDiscoveryBroadcast(conn *net.UDPConn) {
 		return
 	}
 
-	for i := 0; i < 3; i++ {
-		_, err = conn.Write(jsonData)
-		if err != nil {
-			fmt.Printf("Error sending discovery broadcast: %v\n", err)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-func (c *Client) broadcastDiscovery() {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", broadcastAddr, discoveryPort))
+	_, err = conn.Write(jsonData)
 	if err != nil {
-		fmt.Printf("Error resolving broadcast address: %v\n", err)
-		return
+		fmt.Printf("Error sending discovery broadcast: %v\n", err)
 	}
-
-	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		fmt.Printf("Error creating UDP connection: %v\n", err)
-		return
-	}
-	defer conn.Close()
-
-	c.sendDiscoveryBroadcast(conn)
 }

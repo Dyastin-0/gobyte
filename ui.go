@@ -21,9 +21,6 @@ func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFu
 		case "send":
 			c.sendFiles()
 
-		case "refresh":
-			c.refreshPeers()
-
 		case "quit":
 			cancel()
 			fmt.Println("Goodbye!")
@@ -67,7 +64,6 @@ func (c *Client) showMainMenu() string {
 				Title("What would you like to do?").
 				Options(
 					huh.NewOption(fmt.Sprintf("Send Files (%d peers available)", peerCount), "send"),
-					huh.NewOption("Refresh Peer List", "refresh"),
 					huh.NewOption("Quit", "quit"),
 				).
 				Value(&option),
