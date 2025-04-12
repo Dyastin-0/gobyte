@@ -92,7 +92,7 @@ func (c *Client) chuck(peer *Peer, files []FileInfo) {
 
 		writer.WriteString("END\n")
 		writer.Flush()
-		fmt.Println(SUCCESS.Render(fmt.Sprintf("All files sent to %s ✓", peer.Name)))
+		fmt.Println(SUCCESS.Bold(true).Render(fmt.Sprintf("All files sent to %s ✓", peer.Name)))
 
 	case <-time.After(15 * time.Second):
 		fmt.Println(ERROR.Render(fmt.Sprintf("Timeout waiting for %s to accept the transfer.", peer.Name)))
@@ -121,7 +121,7 @@ func chuck(fileInfo FileInfo, writer *bufio.Writer) error {
 	}
 
 	file.Close()
-	fmt.Println(SUCCESS.Bold(true).Render(fmt.Sprintf("%s sent (%d bytes)", fileInfo.Name, sent)))
+	fmt.Println(SUCCESS.Render(fmt.Sprintf("%s sent (%d bytes)", fileInfo.Name, sent)))
 
 	return nil
 }
