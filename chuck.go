@@ -7,12 +7,15 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-func (c *Client) chuck(peer *Peer, files []FileInfo) {
+func (c *Client) chuck(peer *Peer, files []FileInfo, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	transferID := uuid.New().String()
 
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, discoveryPort))
@@ -92,6 +95,7 @@ func (c *Client) chuck(peer *Peer, files []FileInfo) {
 
 		writer.WriteString("END\n")
 		writer.Flush()
+
 		fmt.Println(SUCCESS.Bold(true).Render(fmt.Sprintf("All files sent to %s ✓", peer.Name)))
 
 	case <-time.After(15 * time.Second):

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -134,9 +135,14 @@ func (c *Client) sendFiles() {
 		return
 	}
 
+	var wg sync.WaitGroup
+
 	for _, peer := range peers {
-		go c.chuck(&peer, files)
+		wg.Add(1)
+		go c.chuck(&peer, files, &wg)
 	}
+
+	wg.Wait()
 }
 
 func (c *Client) selectFiles() ([]FileInfo, error) {
