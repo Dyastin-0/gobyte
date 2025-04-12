@@ -43,7 +43,7 @@ func (c *Client) NewCLI() *cli.Command {
 						Name:    "dir",
 						Aliases: []string{"d"},
 						Usage:   "Directory to receive files to",
-						Value:   "~/gobyte/received",
+						Value:   homeDir + "/gobyte/received",
 					},
 				},
 				Action: c.chompCommand,
