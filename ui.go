@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/huh"
 )
 
-func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFunc) {
+func (c *Client) runInteractiveMode(ctx context.Context) {
 	go c.listen(ctx)
 	go c.pingBroadcaster(ctx)
 
@@ -25,8 +26,7 @@ func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFu
 			c.displayPeers()
 
 		case "quit":
-			cancel()
-			fmt.Println(TITLE.Render("gobyte some grass."))
+			c.Shutdown <- syscall.SIGINT
 			return
 		}
 	}

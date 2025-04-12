@@ -1,12 +1,10 @@
 package gobyte
 
 import (
-	"context"
-
 	"github.com/urfave/cli/v3"
 )
 
-func (c *Client) createCLIApp(cancel context.CancelFunc) *cli.Command {
+func (c *Client) createCLIApp() *cli.Command {
 	return &cli.Command{
 		Name:        "gobyte",
 		Usage:       "Blazingly fast local LAN file sharing CLI app",
@@ -23,7 +21,7 @@ func (c *Client) createCLIApp(cancel context.CancelFunc) *cli.Command {
 						Usage:   "Override the default device name",
 					},
 				},
-				Action: c.chuckCommand(cancel),
+				Action: c.chuckCommand,
 			},
 			{
 				Name:  "chomp",

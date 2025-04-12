@@ -121,7 +121,7 @@ func chuck(fileInfo FileInfo, writer *bufio.Writer) error {
 	}
 
 	file.Close()
-	fmt.Println(SUCCESS.Render(fmt.Sprintf("%s sent (%d bytes)", fileInfo.Name, sent)))
+	fmt.Println(SUCCESS.Bold(true).Render(fmt.Sprintf("%s sent (%d bytes)", fileInfo.Name, sent)))
 
 	return nil
 }

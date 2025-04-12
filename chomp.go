@@ -163,5 +163,5 @@ func chomp(listener net.Listener, dir string) {
 		fmt.Println(SUCCESS.Render(fmt.Sprintf("Received %s (%d bytes)", fileName, received)))
 	}
 
-	fmt.Println(SUCCESS.Render("File chomping complete ✓"))
+	fmt.Println(SUCCESS.Bold(true).Render("File chomping complete ✓"))
 }
