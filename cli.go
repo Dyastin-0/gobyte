@@ -23,7 +23,7 @@ func (c *Client) NewCLI() *cli.Command {
 						Name:    "dir",
 						Aliases: []string{"d"},
 						Usage:   "Overrided the default initial directory",
-						Value:   ".",
+						Value:   "~/gobyte/received",
 					},
 				},
 				Action: c.chuckCommand,
