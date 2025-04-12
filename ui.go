@@ -76,7 +76,6 @@ func (c *Client) showMainMenu() string {
 
 	err := form.Run()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
 		return "quit"
 	}
 	return option
