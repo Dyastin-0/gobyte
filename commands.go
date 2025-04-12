@@ -4,16 +4,27 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"syscall"
 
 	"github.com/urfave/cli/v3"
 )
 
 func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
-	if cmd.String("name") != "" {
-		c.self.Name = cmd.String("name")
+	dir := cmd.String("dir")
+
+	_, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		fmt.Println(ERROR.Bold(true).Render("-d does not exists"))
+		c.Shutdown <- syscall.SIGINT
+		return nil
 	}
 
-	c.runInteractiveMode(ctx)
+	name := cmd.String("name")
+	if name != "" {
+		c.self.Name = name
+	}
+
+	go c.runInteractiveMode(ctx, dir)
 
 	return nil
 }

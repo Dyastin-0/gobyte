@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-func (c *Client) runInteractiveMode(ctx context.Context) {
+func (c *Client) runInteractiveMode(ctx context.Context, dir string) {
 	go c.listen(ctx)
 	go c.pingBroadcaster(ctx)
 
@@ -21,7 +21,7 @@ func (c *Client) runInteractiveMode(ctx context.Context) {
 
 		switch option {
 		case "send":
-			c.sendFiles()
+			c.sendFiles(dir)
 
 		case "peers":
 			c.displayPeers()
@@ -121,14 +121,14 @@ func (c *Client) selectPeers() ([]Peer, error) {
 	return selectedPeers, nil
 }
 
-func (c *Client) sendFiles() {
+func (c *Client) sendFiles(dir string) {
 	peers, err := c.selectPeers()
 	if err != nil || len(peers) == 0 {
-		fmt.Println(INFO.Render("No peers to send to."))
+		fmt.Println(INFO.Render("No peers to send to"))
 		return
 	}
 
-	files, err := c.selectFiles()
+	files, err := c.selectFiles(dir)
 	if err != nil || len(files) == 0 {
 		fmt.Println(INFO.Render(err.Error()))
 		return
@@ -144,9 +144,9 @@ func (c *Client) sendFiles() {
 	wg.Wait()
 }
 
-func (c *Client) selectFiles() ([]FileInfo, error) {
+func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 	selectedFiles := make(map[string]FileInfo)
-	currentDir := "."
+	currentDir := dir
 	var selected string
 
 	for {

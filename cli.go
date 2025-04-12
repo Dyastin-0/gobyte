@@ -20,6 +20,12 @@ func (c *Client) createCLIApp() *cli.Command {
 						Aliases: []string{"n"},
 						Usage:   "Override the default device name",
 					},
+					&cli.StringFlag{
+						Name:    "dir",
+						Aliases: []string{"d"},
+						Usage:   "Overrided the default initial directory",
+						Value:   ".",
+					},
 				},
 				Action: c.chuckCommand,
 			},
