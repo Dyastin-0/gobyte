@@ -22,7 +22,7 @@ func (c *Client) handleNewPeer(msg Message) {
 }
 
 func (c *Client) pingBroadcaster(ctx context.Context) {
-	ticker := time.NewTicker(200 * time.Millisecond)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -82,7 +82,7 @@ func (c *Client) sendPing(peer *Peer) {
 
 		return
 
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(250 * time.Millisecond):
 		c.pongMU.Lock()
 		delete(c.pendingPong, peer.ID)
 		c.pongMU.Unlock()
