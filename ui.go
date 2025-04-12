@@ -135,7 +135,7 @@ func (c *Client) sendFiles() {
 	}
 
 	for _, peer := range peers {
-		c.chuck(&peer, files)
+		go c.chuck(&peer, files)
 	}
 }
 
