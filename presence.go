@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (c *Client) broadcastPresence(ctx context.Context) {
+func (c *Client) presenceBroadcaster(ctx context.Context) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", broadcastAddr, discoveryPort))
 	if err != nil {
 		fmt.Printf("Error resolving broadcast address: %v\n", err)

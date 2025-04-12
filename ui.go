@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/huh"
 )
@@ -31,7 +32,7 @@ func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFu
 	}
 }
 
-func (c *Client) showConfirm(title string) bool {
+func (c *Client) showConfirm(title string, duration time.Duration) (bool, error) {
 	var confirm bool
 
 	form := huh.NewForm(
@@ -42,15 +43,14 @@ func (c *Client) showConfirm(title string) bool {
 				Title(title).
 				Value(&confirm),
 		),
-	)
+	).WithTimeout(duration)
 
 	err := form.Run()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return false
+		return false, err
 	}
 
-	return confirm
+	return confirm, nil
 }
 
 func (c *Client) showMainMenu() string {

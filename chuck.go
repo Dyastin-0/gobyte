@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +20,7 @@ func (c *Client) chuck(peer *Peer, files []FileInfo) {
 		fmt.Printf("Error resolving peer address: %v\n", err)
 		return
 	}
+
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		fmt.Printf("Error creating UDP connection: %v\n", err)
@@ -66,10 +69,12 @@ func (c *Client) chuck(peer *Peer, files []FileInfo) {
 			fmt.Println(ERROR.Render(fmt.Sprintf("%s rejected the files.", peer.Name)))
 			return
 		}
+
 		fmt.Println(SUCCESS.Render(fmt.Sprintf("%s accepted the request.", peer.Name)))
 
 		tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, transferPort)
-		tcpConn, err := net.DialTimeout("tcp", tcpAddr, time.Minute*1)
+
+		tcpConn, err := net.DialTimeout("tcp", tcpAddr, 15*time.Second)
 		if err != nil {
 			fmt.Println(ERROR.Render(err.Error()))
 			return
@@ -93,4 +98,30 @@ func (c *Client) chuck(peer *Peer, files []FileInfo) {
 		fmt.Println(ERROR.Render(fmt.Sprintf("Timeout waiting for %s to accept the transfer.", peer.Name)))
 		return
 	}
+}
+
+func chuck(fileInfo FileInfo, writer *bufio.Writer) error {
+	fmt.Println(INFO.Render(fmt.Sprintf("Sending %s...", fileInfo.Name)))
+	file, err := os.Open(fileInfo.Path)
+	if err != nil {
+		return fmt.Errorf("error opening file: %v", err)
+	}
+
+	header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
+	if _, err = writer.WriteString(header); err != nil {
+		file.Close()
+		return fmt.Errorf("error sending file header: %v", err)
+	}
+	writer.Flush()
+
+	sent, err := io.CopyN(writer, file, fileInfo.Size)
+	if err != nil {
+		file.Close()
+		return fmt.Errorf("error sending file data: %v", err)
+	}
+
+	file.Close()
+	fmt.Println(SUCCESS.Render(fmt.Sprintf("%s sent (%d bytes)", fileInfo.Name, sent)))
+
+	return nil
 }
