@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -27,7 +26,6 @@ func (c *Client) runInteractiveMode(ctx context.Context, dir string) {
 			c.displayPeers()
 
 		case "quit":
-			c.Shutdown <- syscall.SIGINT
 			return
 		}
 	}

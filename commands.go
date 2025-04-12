@@ -4,18 +4,18 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"syscall"
 
 	"github.com/urfave/cli/v3"
 )
 
 func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
+	fmt.Println(TITLE.Render("gobyte"), SUCCESS.Render(fmt.Sprintf("as %s (%s)", c.self.Name, c.self.IPAddress)))
+
 	dir := cmd.String("dir")
 
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		fmt.Println(ERROR.Bold(true).Render("-d does not exists"))
-		c.Shutdown <- syscall.SIGINT
 		return nil
 	}
 
@@ -24,12 +24,16 @@ func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
 		c.self.Name = name
 	}
 
-	go c.runInteractiveMode(ctx, dir)
+	c.runInteractiveMode(ctx, dir)
+
+	fmt.Println(TITLE.Render("gobyte some grass"))
 
 	return nil
 }
 
 func (c *Client) chompCommand(ctx context.Context, cmd *cli.Command) error {
+	fmt.Println(TITLE.Render("gobyte"), SUCCESS.Render(fmt.Sprintf("as %s (%s)", c.self.Name, c.self.IPAddress)))
+
 	dir := cmd.String("dir")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -42,6 +46,8 @@ func (c *Client) chompCommand(ctx context.Context, cmd *cli.Command) error {
 	go c.presenceBroadcaster(ctx)
 
 	c.listen(ctx)
+
+	fmt.Println(TITLE.Render("gobyte some grass"))
 
 	return nil
 }

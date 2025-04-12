@@ -4,12 +4,11 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func (c *Client) createCLIApp() *cli.Command {
+func (c *Client) NewCLI() *cli.Command {
 	return &cli.Command{
-		Name:        "gobyte",
-		Usage:       "Blazingly fast local LAN file sharing CLI app",
-		Version:     "0.0.1",
-		Description: "A command-line tool for sharing files with peers on your local network",
+		Name:    "gobyte",
+		Usage:   "Blazingly fast local area network file sharing CLI app",
+		Version: "0.1.0",
 		Commands: []*cli.Command{
 			{
 				Name:  "chuck",
