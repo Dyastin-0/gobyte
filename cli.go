@@ -15,7 +15,7 @@ func (c *Client) createCLIApp(cancel context.CancelFunc) *cli.Command {
 		Commands: []*cli.Command{
 			{
 				Name:  "chuck",
-				Usage: "Send files to discovered peers",
+				Usage: "Send files to your local peers",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "name",
@@ -26,19 +26,13 @@ func (c *Client) createCLIApp(cancel context.CancelFunc) *cli.Command {
 				Action: c.chuckCommand(cancel),
 			},
 			{
-				Name:    "list",
-				Aliases: []string{"ls", "l"},
-				Usage:   "List available peers on the network",
-				Action:  c.listCommand,
-			},
-			{
 				Name:  "chomp",
-				Usage: "Listen for incoming files",
+				Usage: "Listen for incoming requests",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "dir",
 						Aliases: []string{"d"},
-						Usage:   "Directory to save received files",
+						Usage:   "Directory to receive files to",
 						Value:   "./files",
 					},
 				},

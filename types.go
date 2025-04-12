@@ -27,10 +27,11 @@ type FileInfo struct {
 type MessageType string
 
 const (
-	TypeDiscovery    = "discovery"
-	TypeDiscoveryAck = "discovery_ack"
-	TypeTransferReq  = "transfer_req"
-	TypeTransferAck  = "transfer_ack"
+	TypeUDPreq      = "udp_req"
+	TypeUDPping     = "udp_ping"
+	TypeUDPpong     = "udp_pong"
+	TypeTransferReq = "transfer_req"
+	TypeTransferAck = "transfer_ack"
 )
 
 type Message struct {

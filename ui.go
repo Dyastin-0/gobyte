@@ -10,9 +10,8 @@ import (
 )
 
 func (c *Client) runInteractiveMode(ctx context.Context, cancel context.CancelFunc) {
-	fmt.Println(INFO.Render("Discovering peers on your network..."))
-
 	go c.listen(ctx)
+	go c.pingBroadcaster(ctx)
 
 	for {
 		option := c.showMainMenu()
@@ -57,9 +56,9 @@ func (c *Client) showConfirm(title string) bool {
 func (c *Client) showMainMenu() string {
 	var option string
 
-	c.MU.RLock()
-	peerCount := len(c.KnownPeers)
-	c.MU.RUnlock()
+	c.mu.RLock()
+	peerCount := len(c.knownPeers)
+	c.mu.RUnlock()
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -83,17 +82,17 @@ func (c *Client) showMainMenu() string {
 }
 
 func (c *Client) selectPeers() ([]Peer, error) {
-	c.MU.RLock()
-	defer c.MU.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if len(c.KnownPeers) == 0 {
+	if len(c.knownPeers) == 0 {
 		return nil, fmt.Errorf("no peers found")
 	}
 
 	var peerOptions []huh.Option[string]
 	peerMap := make(map[string]Peer)
 
-	for _, peer := range c.KnownPeers {
+	for _, peer := range c.knownPeers {
 		option := fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)
 		peerOptions = append(peerOptions, huh.NewOption(option, peer.ID))
 		peerMap[peer.ID] = *peer
@@ -136,7 +135,7 @@ func (c *Client) sendFiles() {
 	}
 
 	for _, peer := range peers {
-		c.sendFilesTo(&peer, files)
+		c.chuck(&peer, files)
 	}
 }
 
@@ -198,17 +197,17 @@ func (c *Client) selectFiles() ([]FileInfo, error) {
 }
 
 func (c *Client) displayPeers() {
-	c.MU.RLock()
-	defer c.MU.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if len(c.KnownPeers) == 0 {
+	if len(c.knownPeers) == 0 {
 		fmt.Println(INFO.Render("No peers found on the network."))
 		return
 	}
 
-	fmt.Println(INFO.Render("Discovered peers:"))
+	fmt.Println(INFO.Render("Peers:"))
 
-	for _, peer := range c.KnownPeers {
+	for _, peer := range c.knownPeers {
 		fmt.Println(SUCCESS.Render(fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)))
 	}
 }

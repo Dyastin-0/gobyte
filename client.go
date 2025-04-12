@@ -10,13 +10,16 @@ import (
 )
 
 type Client struct {
-	Self             *Peer
-	Hostname         string
-	KnownPeers       map[string]*Peer
-	SelectedFiles    []FileInfo
-	MU               sync.RWMutex
+	self             *Peer
+	hostname         string
+	knownPeers       map[string]*Peer
+	mu               sync.RWMutex
+	selectedFiles    []FileInfo
 	transferReqChan  chan Message
-	PendingTransfers map[string]chan bool
+	pendingTransfers map[string]chan bool
+	transferMU       sync.RWMutex
+	pendingPong      map[string]chan bool
+	pongMU           sync.RWMutex
 }
 
 func NewClient(ctx context.Context) *Client {
@@ -25,15 +28,16 @@ func NewClient(ctx context.Context) *Client {
 		hostname = "unknown-host"
 	}
 	return &Client{
-		Self: &Peer{
+		self: &Peer{
 			ID:        fmt.Sprintf("%s-%s", hostname, uuid.New().String()),
 			Name:      hostname,
 			IPAddress: getLocalIP(),
 		},
-		KnownPeers:       make(map[string]*Peer),
-		SelectedFiles:    make([]FileInfo, 0),
+		knownPeers:       make(map[string]*Peer),
+		selectedFiles:    make([]FileInfo, 0),
 		transferReqChan:  make(chan Message, 10),
-		PendingTransfers: make(map[string]chan bool),
+		pendingTransfers: make(map[string]chan bool),
+		pendingPong:      make(map[string]chan bool),
 	}
 }
 
