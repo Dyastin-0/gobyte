@@ -1,10 +1,17 @@
 package gobyte
 
 import (
+	"os"
+
 	"github.com/urfave/cli/v3"
 )
 
 func (c *Client) NewCLI() *cli.Command {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "."
+	}
+
 	return &cli.Command{
 		Name:    "gobyte",
 		Usage:   "Blazingly fast local area network file sharing CLI app",
@@ -23,7 +30,7 @@ func (c *Client) NewCLI() *cli.Command {
 						Name:    "dir",
 						Aliases: []string{"d"},
 						Usage:   "Overrided the default initial directory",
-						Value:   "~",
+						Value:   homeDir,
 					},
 				},
 				Action: c.chuckCommand,
