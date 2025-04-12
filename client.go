@@ -16,7 +16,6 @@ type Client struct {
 	hostname         string
 	knownPeers       map[string]*Peer
 	mu               sync.RWMutex
-	selectedFiles    []FileInfo
 	transferReqChan  chan Message
 	pendingTransfers map[string]chan bool
 	transferMU       sync.RWMutex
@@ -40,7 +39,6 @@ func NewClient(ctx context.Context) *Client {
 	return &Client{
 		self:             self,
 		knownPeers:       make(map[string]*Peer),
-		selectedFiles:    make([]FileInfo, 0),
 		transferReqChan:  make(chan Message, 10),
 		pendingTransfers: make(map[string]chan bool),
 		pendingPong:      make(map[string]chan bool),
