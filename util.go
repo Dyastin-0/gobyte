@@ -38,7 +38,7 @@ func chuck(fileInfo FileInfo, writer *bufio.Writer) error {
 	return nil
 }
 
-func chomp(listener net.Listener, msg Message, dir string) {
+func chomp(listener net.Listener, dir string) {
 	conn, err := listener.Accept()
 	if err != nil {
 		fmt.Printf("Error accepting connection: %v\n", err)

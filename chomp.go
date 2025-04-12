@@ -72,7 +72,7 @@ func (c *Client) chomp(ctx context.Context, dir string) {
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(1 * time.Minute))
 			fmt.Println(INFO.Render("Waiting for connection..."))
 
-			go chomp(listener, msg, dir)
+			go chomp(listener, dir)
 		}
 	}
 }
