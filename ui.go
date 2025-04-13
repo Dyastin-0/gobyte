@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -20,7 +19,7 @@ func (c *Client) runInteractiveMode(ctx context.Context, dir string) {
 
 		switch option {
 		case "send":
-			c.sendFiles(dir)
+			c.chuck(dir)
 
 		case "peers":
 			c.displayPeers()
@@ -37,8 +36,8 @@ func (c *Client) showConfirm(title string, duration time.Duration) (bool, error)
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
-				Affirmative("Yes").
-				Negative("No").
+				Affirmative("yes").
+				Negative("no").
 				Title(title).
 				Value(&confirm),
 		),
@@ -62,11 +61,11 @@ func (c *Client) showMainMenu() string {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("What would you like to do?").
+				Title("what would you like to do?").
 				Options(
-					huh.NewOption(fmt.Sprintf("Send Files (%d peers available)", peerCount), "send"),
-					huh.NewOption("List Peers", "peers"),
-					huh.NewOption("Quit", "quit"),
+					huh.NewOption(fmt.Sprintf("send files (%d peers available)", peerCount), "send"),
+					huh.NewOption("list peers", "peers"),
+					huh.NewOption("quit", "quit"),
 				).
 				Value(&option),
 		),
@@ -119,29 +118,6 @@ func (c *Client) selectPeers() ([]Peer, error) {
 	return selectedPeers, nil
 }
 
-func (c *Client) sendFiles(dir string) {
-	peers, err := c.selectPeers()
-	if err != nil || len(peers) == 0 {
-		fmt.Println(INFO.Render("No peers to send to"))
-		return
-	}
-
-	files, err := c.selectFiles(dir)
-	if err != nil || len(files) == 0 {
-		fmt.Println(INFO.Render(err.Error()))
-		return
-	}
-
-	var wg sync.WaitGroup
-
-	for _, peer := range peers {
-		wg.Add(1)
-		go c.chuck(&peer, files, &wg)
-	}
-
-	wg.Wait()
-}
-
 func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 	selectedFiles := make(map[string]FileInfo)
 	currentDir := dir
@@ -183,17 +159,17 @@ func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 			}
 		}
 
-		options = append(options, huh.NewOption("Done", "done"))
-		options = append(options, huh.NewOption("Cancel", "cancel"))
+		options = append(options, huh.NewOption("done", "done"))
+		options = append(options, huh.NewOption("cancel", "cancel"))
 
 		if len(options) == 2 {
-			return nil, fmt.Errorf("no entries found in directory: %s", currentDir)
+			return nil, fmt.Errorf("directory is empty: %s", currentDir)
 		}
 
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewSelect[string]().
-					Title(fmt.Sprintf("Browsing: %s (%d files selected)", currentDir, len(selectedFiles))).
+					Title(fmt.Sprintf("browsing: %s (%d files selected)", currentDir, len(selectedFiles))).
 					Options(options...).
 					Value(&selected),
 			),
@@ -227,7 +203,7 @@ func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 			fullPath := filepath.Join(currentDir, selected)
 			fileInfo, err := os.Stat(fullPath)
 			if err != nil {
-				return nil, fmt.Errorf("error accessing %s: %v", fullPath, err)
+				return nil, fmt.Errorf("failed to access %s", fullPath)
 			}
 
 			if fileInfo.IsDir() {
@@ -253,11 +229,11 @@ func (c *Client) displayPeers() {
 	defer c.mu.RUnlock()
 
 	if len(c.knownPeers) == 0 {
-		fmt.Println(INFO.Render("No peers found on the network."))
+		fmt.Println(INFO.Render("no peers found"))
 		return
 	}
 
-	fmt.Println(INFO.Render("Peers:"))
+	fmt.Println(INFO.Render("peers:"))
 
 	for _, peer := range c.knownPeers {
 		fmt.Println(SUCCESS.Render(fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)))

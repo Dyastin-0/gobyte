@@ -27,30 +27,30 @@ func (c *Client) chomp(ctx context.Context, dir string) {
 			listener.Close()
 			return
 		case msg := <-c.transferReqChan:
-			fmt.Println(INFO.Render(fmt.Sprintf("File chomping request from %s (%s)", msg.SenderName, msg.IPAddress)))
+			fmt.Println(INFO.Render(fmt.Sprintf("file chomping request from %s (%s)", msg.SenderName, msg.IPAddress)))
 
 			str := "file"
 			if len(msg.Files) > 1 {
 				str += "s"
 			}
-			confirm, err := c.showConfirm(fmt.Sprintf("Accept %d %s from %s?", len(msg.Files), str, msg.SenderName), 15*time.Second)
+			confirm, err := c.showConfirm(fmt.Sprintf("accept %d %s from %s?", len(msg.Files), str, msg.SenderName), 15*time.Second)
 			if err != nil {
 				fmt.Println(ERROR.Render(fmt.Sprintf("request from %s timed out", msg.SenderName)))
 				continue
 			}
 
-			err = ackTrasferRequest(msg, confirm, c.self)
+			err = c.sendAck(msg, confirm)
 			if err != nil {
 				fmt.Println(ERROR.Render(fmt.Sprintf("error: %v", err)))
 			}
 
 			if !confirm {
-				fmt.Println(INFO.Render("Files rejected."))
+				fmt.Println(INFO.Render("files rejected"))
 				continue
 			}
 
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(15 * time.Second))
-			fmt.Println(INFO.Render("Waiting for connection..."))
+			fmt.Println(INFO.Render("waiting for connection..."))
 
 			go func() {
 				err := chomp(listener, dir)
@@ -59,45 +59,43 @@ func (c *Client) chomp(ctx context.Context, dir string) {
 					return
 				}
 
-				fmt.Println(SUCCESS.Bold(true).Render("All files chomped ✓"))
+				fmt.Println(SUCCESS.Bold(true).Render("all files chomped ✓"))
 			}()
 		}
 	}
 }
 
-func ackTrasferRequest(msg Message, confirm bool, self *Peer) error {
+func (c *Client) sendAck(msg Message, confirm bool) error {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", msg.IPAddress, discoveryPort))
 	if err != nil {
 		return fmt.Errorf("failed to resolve udp addr")
 	}
 
-	respConn, err := net.DialUDP("udp", nil, addr)
+	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		return fmt.Errorf("failed to dial udp")
 	}
 
-	ackMessage := Message{
+	defer conn.Close()
+
+	ack := Message{
 		Type:       TypeTransferAck,
-		SenderID:   self.ID,
-		SenderName: self.Name,
-		IPAddress:  self.IPAddress,
+		SenderID:   c.self.ID,
+		SenderName: c.self.Name,
+		IPAddress:  c.self.IPAddress,
 		Accepted:   confirm,
 		TransferID: msg.TransferID,
 	}
 
-	ackMessageBytes, err := json.Marshal(ackMessage)
+	ackBytes, err := json.Marshal(ack)
 	if err != nil {
-		respConn.Close()
 		return fmt.Errorf("failed to marshal ackMessage")
 	}
 
-	_, err = respConn.Write(ackMessageBytes)
+	_, err = conn.Write(ackBytes)
 	if err != nil {
-		respConn.Close()
 		return fmt.Errorf("failed to write ackMessage")
 	}
-
-	respConn.Close()
 
 	return nil
 }
@@ -151,7 +149,7 @@ func chomp(listener net.Listener, dir string) error {
 			return err
 		}
 
-		fmt.Println(SUCCESS.Render(fmt.Sprintf("Received %s (%d bytes)", fileName, wroteBytes)))
+		fmt.Println(SUCCESS.Render(fmt.Sprintf("received %s (%d bytes)", fileName, wroteBytes)))
 	}
 
 	return nil
