@@ -13,8 +13,6 @@ func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
 
 	dir := cmd.String("dir")
 
-	fmt.Println(dir)
-
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		fmt.Println(ERROR.Bold(true).Render("-d does not exists"))
