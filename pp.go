@@ -1,4 +1,4 @@
-package gobye
+package main
 
 import (
 	"encoding/json"

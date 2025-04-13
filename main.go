@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"time"
-
-	"github.com/Dyastin-0/gobyte"
 )
 
 func main() {
@@ -15,6 +13,6 @@ func main() {
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	client := gobyte.NewClient(ctx)
+	client := NewClient(ctx)
 	client.Run(ctx)
 }
