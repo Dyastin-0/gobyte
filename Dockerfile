@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN go build -o build/gobyte gobyte/main.go
+RUN go build -o build/gobyte .
 
 EXPOSE 8888 8889
 
