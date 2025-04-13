@@ -30,5 +30,5 @@ gobyte chomp -d ~/Documents/gobyte/received
 ### Installation
 
 ```
-go install github.com/Dyastin-0/gobyte
+go install github.com/Dyastin-0/gobyte/gobyte@latest
 ```
