@@ -1,4 +1,4 @@
-package gobyte
+package main
 
 import (
 	"github.com/charmbracelet/lipgloss"
