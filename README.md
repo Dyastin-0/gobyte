@@ -1,17 +1,27 @@
-# gobyte
+## gobyte
 
 A local area network file sharing CLI app. 
 
-## Features
+### Demo
 
-- Automatic peer discovery and disconnection
+![Demo](demo/demo.gif)
+
+### Features
+
+- Automatic peer discovery
 - Multi-peer selection
 - Multi-file selection
 - File tree navigation
 
-## Basic Usage
+### Installation
 
-### Sender
+```
+go install github.com/Dyastin-0/gobyte/gobyte@latest
+```
+
+### Basic Usage
+
+#### Sender
 
 Set the `-d` or `-dir` flag to the initial directory you want to start on when selecting files (default `~`).
 
@@ -19,16 +29,10 @@ Set the `-d` or `-dir` flag to the initial directory you want to start on when s
 gobyte chuck -d ~/Documents
 ```
 
-### Receiver
+#### Receiver
 
 Set the `-d` or `-dir` flag to the directory you want to receive files to (default `~/gobyte/received`).
 
 ```
 gobyte chomp -d ~/Documents/gobyte/received
-```
-
-### Installation
-
-```
-go install github.com/Dyastin-0/gobyte/gobyte@latest
 ```
