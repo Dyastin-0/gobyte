@@ -9,6 +9,11 @@ import (
 )
 
 func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.String("name")
+	if name != "" {
+		c.self.Name = name
+	}
+
 	fmt.Println(TITLE.Render("gobyte"), SUCCESS.Render(fmt.Sprintf("as %s (%s)", c.self.Name, c.self.IPAddress)))
 
 	dir := cmd.String("dir")
@@ -19,11 +24,6 @@ func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	name := cmd.String("name")
-	if name != "" {
-		c.self.Name = name
-	}
-
 	c.runInteractiveMode(ctx, dir)
 
 	fmt.Println(TITLE.Render("gobyte some grass"))
@@ -32,6 +32,11 @@ func (c *Client) chuckCommand(ctx context.Context, cmd *cli.Command) error {
 }
 
 func (c *Client) chompCommand(ctx context.Context, cmd *cli.Command) error {
+	name := cmd.String("name")
+	if name != "" {
+		c.self.Name = name
+	}
+
 	fmt.Println(TITLE.Render("gobyte"), SUCCESS.Render(fmt.Sprintf("as %s (%s)", c.self.Name, c.self.IPAddress)))
 
 	dir := cmd.String("dir")

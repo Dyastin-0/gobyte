@@ -40,6 +40,11 @@ func (c *Client) NewCLI() *cli.Command {
 				Usage: "Listen for incoming requests",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
+						Name:    "name",
+						Aliases: []string{"n"},
+						Usage:   "Override the default device name",
+					},
+					&cli.StringFlag{
 						Name:    "dir",
 						Aliases: []string{"d"},
 						Usage:   "Directory to receive files to",
