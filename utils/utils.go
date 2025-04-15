@@ -1,10 +1,10 @@
-package main
+package utils
 
 import (
 	"net"
 )
 
-func getLocalIP() string {
+func GetLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "127.0.0.1"

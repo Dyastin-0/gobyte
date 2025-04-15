@@ -1,12 +1,15 @@
-package main
+package cui
 
 import (
+	"context"
+	"fmt"
 	"os"
 
+	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/urfave/cli/v3"
 )
 
-func (c *Client) NewCLI() *cli.Command {
+func (cui *ClientUI) NewCLI() *cli.Command {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = "."
@@ -33,7 +36,7 @@ func (c *Client) NewCLI() *cli.Command {
 						Value:   homeDir,
 					},
 				},
-				Action: c.chuckCommand,
+				Action: cui.chuckCommand,
 			},
 			{
 				Name:  "chomp",
@@ -51,8 +54,16 @@ func (c *Client) NewCLI() *cli.Command {
 						Value:   homeDir + "/gobyte/received",
 					},
 				},
-				Action: c.chompCommand,
+				Action: cui.chompCommand,
 			},
 		},
+	}
+}
+
+func (cui *ClientUI) Run(ctx context.Context) {
+	cli := cui.NewCLI()
+
+	if err := cli.Run(ctx, os.Args); err != nil {
+		fmt.Println(styles.ERROR.Render(err.Error()))
 	}
 }

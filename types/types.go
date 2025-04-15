@@ -1,16 +1,4 @@
-package main
-
-import (
-	"github.com/charmbracelet/lipgloss"
-)
-
-const (
-	discoveryPort = 8888
-	transferPort  = 8889
-	broadcastAddr = "255.255.255.255"
-	discoveryMsg  = "GOBYTE"
-	maxBufferSize = 1024 * 1024
-)
+package types
 
 type Peer struct {
 	ID        string `json:"id"`
@@ -43,20 +31,3 @@ type Message struct {
 	Accepted   bool       `json:"accepted,omitempty"`
 	TransferID string     `json:"transfer_id,omitempty"`
 }
-
-var (
-	TITLE = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#7d56f4"))
-
-	INFO = lipgloss.NewStyle().
-		Italic(true).
-		Foreground(lipgloss.Color("#888888"))
-
-	SUCCESS = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#28a745"))
-
-	ERROR = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#ee4b2b"))
-)

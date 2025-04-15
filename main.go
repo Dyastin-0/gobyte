@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/Dyastin-0/gobyte/client"
+	"github.com/Dyastin-0/gobyte/cui"
+	"github.com/Dyastin-0/gobyte/styles"
 )
 
 func main() {
@@ -10,9 +15,12 @@ func main() {
 
 	defer func() {
 		cancel()
+		fmt.Println(styles.TITLE.Render("gobyte some grass"))
 		time.Sleep(100 * time.Millisecond)
 	}()
 
-	client := NewClient(ctx)
-	client.Run(ctx)
+	client := client.New(ctx)
+
+	clientUI := cui.New(client)
+	clientUI.Run(ctx)
 }

@@ -1,36 +1,52 @@
-package main
+package cui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/Dyastin-0/gobyte/client"
+	"github.com/Dyastin-0/gobyte/styles"
+	"github.com/Dyastin-0/gobyte/types"
 	"github.com/charmbracelet/huh"
 )
 
-func (c *Client) runInteractiveMode(ctx context.Context, dir string) {
-	go c.listen(ctx)
-	go c.pingBroadcaster(ctx)
+type ClientUI struct {
+	client *client.Client
+}
 
-	for {
-		option := c.showMainMenu()
-
-		switch option {
-		case "send":
-			c.chuck(dir)
-
-		case "peers":
-			c.displayPeers()
-
-		case "quit":
-			return
-		}
+func New(client *client.Client) ClientUI {
+	return ClientUI{
+		client,
 	}
 }
 
-func (c *Client) showConfirm(title string, duration time.Duration) (bool, error) {
+func (cui *ClientUI) showMainMenu() string {
+	var option string
+	count, _ := cui.client.CountKnownPeers()
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("what would you like to do?").
+				Options(
+					huh.NewOption(fmt.Sprintf("chuck files (%d chompers available)", count), "send"),
+					huh.NewOption("list chompers", "peers"),
+					huh.NewOption("quit", "quit"),
+				).
+				Value(&option),
+		),
+	)
+
+	err := form.Run()
+	if err != nil {
+		return "quit"
+	}
+	return option
+}
+
+func (cui *ClientUI) showConfirm(title string, duration time.Duration) (bool, error) {
 	var confirm bool
 
 	form := huh.NewForm(
@@ -51,45 +67,17 @@ func (c *Client) showConfirm(title string, duration time.Duration) (bool, error)
 	return confirm, nil
 }
 
-func (c *Client) showMainMenu() string {
-	var option string
+func (cui *ClientUI) selectPeers() ([]types.Peer, error) {
+	count, peers := cui.client.CountKnownPeers()
 
-	c.mu.RLock()
-	peerCount := len(c.knownPeers)
-	c.mu.RUnlock()
-
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("what would you like to do?").
-				Options(
-					huh.NewOption(fmt.Sprintf("send files (%d peers available)", peerCount), "send"),
-					huh.NewOption("list peers", "peers"),
-					huh.NewOption("quit", "quit"),
-				).
-				Value(&option),
-		),
-	)
-
-	err := form.Run()
-	if err != nil {
-		return "quit"
-	}
-	return option
-}
-
-func (c *Client) selectPeers() ([]Peer, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if len(c.knownPeers) == 0 {
-		return nil, fmt.Errorf("no peers found")
+	if count == 0 {
+		return nil, fmt.Errorf("no chompers discovered")
 	}
 
 	var peerOptions []huh.Option[string]
-	peerMap := make(map[string]Peer)
+	peerMap := make(map[string]types.Peer)
 
-	for _, peer := range c.knownPeers {
+	for _, peer := range peers {
 		option := fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)
 		peerOptions = append(peerOptions, huh.NewOption(option, peer.ID))
 		peerMap[peer.ID] = *peer
@@ -99,7 +87,7 @@ func (c *Client) selectPeers() ([]Peer, error) {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
-				Title("Select peers to send to").
+				Title("select chomper").
 				Options(peerOptions...).
 				Value(&selectedPeerIDs),
 		),
@@ -110,7 +98,7 @@ func (c *Client) selectPeers() ([]Peer, error) {
 		return nil, err
 	}
 
-	var selectedPeers []Peer
+	var selectedPeers []types.Peer
 	for _, id := range selectedPeerIDs {
 		selectedPeers = append(selectedPeers, peerMap[id])
 	}
@@ -118,8 +106,8 @@ func (c *Client) selectPeers() ([]Peer, error) {
 	return selectedPeers, nil
 }
 
-func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
-	selectedFiles := make(map[string]FileInfo)
+func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
+	selectedFiles := make(map[string]types.FileInfo)
 	currentDir := dir
 	var selected string
 
@@ -151,7 +139,7 @@ func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 				displayName := name
 
 				if _, selected := selectedFiles[fullPath]; selected {
-					displayName = SUCCESS.Render("[✓] " + name)
+					displayName = styles.SUCCESS.Render("[✓] " + name)
 				}
 
 				option := fmt.Sprintf("%s (%d bytes)", displayName, fileInfo.Size())
@@ -193,7 +181,7 @@ func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 				return nil, fmt.Errorf("no file selected")
 			}
 
-			var result []FileInfo
+			var result []types.FileInfo
 			for _, fileInfo := range selectedFiles {
 				result = append(result, fileInfo)
 			}
@@ -212,7 +200,7 @@ func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 				if _, exists := selectedFiles[fullPath]; exists {
 					delete(selectedFiles, fullPath)
 				} else {
-					selectedFiles[fullPath] = FileInfo{
+					selectedFiles[fullPath] = types.FileInfo{
 						Name: selected,
 						Size: fileInfo.Size(),
 						Path: fullPath,
@@ -224,18 +212,17 @@ func (c *Client) selectFiles(dir string) ([]FileInfo, error) {
 	}
 }
 
-func (c *Client) displayPeers() {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+func (cui *ClientUI) displayPeers() {
+	count, peers := cui.client.CountKnownPeers()
 
-	if len(c.knownPeers) == 0 {
-		fmt.Println(INFO.Render("no peers found"))
+	if count == 0 {
+		fmt.Println(styles.INFO.Render("no chompers found"))
 		return
 	}
 
-	fmt.Println(INFO.Render("peers:"))
+	fmt.Println(styles.INFO.Render("chompers"))
 
-	for _, peer := range c.knownPeers {
-		fmt.Println(SUCCESS.Render(fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)))
+	for _, peer := range peers {
+		fmt.Println(styles.SUCCESS.PaddingLeft(2).Render(fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)))
 	}
 }

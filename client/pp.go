@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"encoding/json"
@@ -6,11 +6,13 @@ import (
 	"net"
 	"time"
 
+	"github.com/Dyastin-0/gobyte/styles"
+	"github.com/Dyastin-0/gobyte/types"
 	"golang.org/x/net/context"
 )
 
-func (c *Client) handleNewPeer(msg Message) {
-	peer := Peer{
+func (c *Client) handleNewPeer(msg types.Message) {
+	peer := types.Peer{
 		ID:        msg.SenderID,
 		Name:      msg.SenderName,
 		IPAddress: msg.IPAddress,
@@ -39,8 +41,8 @@ func (c *Client) pingBroadcaster(ctx context.Context) {
 	}
 }
 
-func (c *Client) sendPing(peer *Peer) {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, discoveryPort))
+func (c *Client) sendPing(peer *types.Peer) {
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, c.discoveryPort))
 	if err != nil {
 		fmt.Println("Failed to resolve address:", err)
 		return
@@ -52,9 +54,9 @@ func (c *Client) sendPing(peer *Peer) {
 	}
 	defer conn.Close()
 
-	pingMsg := Message{
-		Type:     TypeUDPping,
-		SenderID: c.self.ID,
+	pingMsg := types.Message{
+		Type:     types.TypeUDPping,
+		SenderID: c.Self.ID,
 	}
 
 	pingMsgBytes, err := json.Marshal(pingMsg)
@@ -95,22 +97,22 @@ func (c *Client) sendPing(peer *Peer) {
 	}
 }
 
-func (c *Client) sendPong(peer *Peer) {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, discoveryPort))
+func (c *Client) sendPong(peer *types.Peer) {
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, c.discoveryPort))
 	if err != nil {
-		fmt.Println(ERROR.Render(fmt.Sprintf("failed to send pong: %v", err)))
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to send pong: %v", err)))
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		fmt.Println(ERROR.Render(fmt.Sprintf("failed to dial peer: %v", err)))
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to dial peer: %v", err)))
 	}
 
 	defer conn.Close()
 
-	pongMsg := Message{
-		Type:     TypeUDPpong,
-		SenderID: c.self.ID,
+	pongMsg := types.Message{
+		Type:     types.TypeUDPpong,
+		SenderID: c.Self.ID,
 	}
 
 	pongMsgBytes, err := json.Marshal(pongMsg)

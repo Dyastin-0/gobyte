@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -7,18 +7,21 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/Dyastin-0/gobyte/styles"
+	"github.com/Dyastin-0/gobyte/types"
 )
 
 func (c *Client) listen(ctx context.Context) {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", discoveryPort))
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.discoveryPort))
 	if err != nil {
-		fmt.Printf("Error resolving UDP address: %v\n", err)
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to resolve udp address: %v\n", err)))
 		return
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		fmt.Printf("Error listening on UDP: %v\n", err)
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to listening on udp: %v\n", err)))
 		return
 	}
 	defer conn.Close()
@@ -36,26 +39,26 @@ func (c *Client) listen(ctx context.Context) {
 					continue
 				}
 				if !strings.Contains(err.Error(), "i/o timeout") {
-					fmt.Printf("Error reading from UDP: %v\n", err)
+					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to read from udp: %v\n", err)))
 				}
 				continue
 			}
 
-			var msg Message
+			var msg types.Message
 			if err := json.Unmarshal(buffer[:n], &msg); err != nil {
-				fmt.Printf("Error unmarshaling message: %v\n", err)
+				fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to unmarshal message: %v\n", err)))
 				continue
 			}
 
-			if msg.SenderID == c.self.ID {
+			if msg.SenderID == c.Self.ID {
 				continue
 			}
 
 			switch msg.Type {
-			case TypeUDPreq:
+			case types.TypeUDPreq:
 				c.handleNewPeer(msg)
 
-			case TypeUDPping:
+			case types.TypeUDPping:
 				c.mu.RLock()
 				peer, exists := c.knownPeers[msg.SenderID]
 				c.mu.RUnlock()
@@ -64,7 +67,7 @@ func (c *Client) listen(ctx context.Context) {
 					c.sendPong(peer)
 				}
 
-			case TypeUDPpong:
+			case types.TypeUDPpong:
 				c.pongMU.RLock()
 				ch, exists := c.pendingPong[msg.SenderID]
 				c.pongMU.RUnlock()
@@ -73,14 +76,14 @@ func (c *Client) listen(ctx context.Context) {
 					ch <- true
 				}
 
-			case TypeTransferReq:
+			case types.TypeTransferReq:
 				select {
 				case c.transferReqChan <- msg:
 				default:
-					fmt.Printf("Warning: Transfer request channel full, dropping request from %s\n", msg.SenderName)
+					fmt.Println(styles.ERROR.Render(fmt.Sprintf("transfer channel is full, dropping request from %s", msg.SenderName)))
 				}
 
-			case TypeTransferAck:
+			case types.TypeTransferAck:
 				c.transferMU.RLock()
 				ch, exists := c.pendingTransfers[msg.TransferID]
 				c.transferMU.RUnlock()
