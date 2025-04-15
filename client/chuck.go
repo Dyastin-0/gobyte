@@ -30,7 +30,6 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 			err := c.writeFiles(&p, files)
 			if err != nil {
 				sendErr = err
-				fmt.Println(styles.ERROR.Render(fmt.Sprintf("%v", err)))
 				return
 			}
 
@@ -75,7 +74,7 @@ func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
 				return c.writeFilesToPeer(peer, files)
 
 			case <-time.After(15 * time.Second):
-				return fmt.Errorf("request for %s time ed out", peer.Name)
+				return fmt.Errorf("request for %s timed out", peer.Name)
 			}
 		},
 	).Run()

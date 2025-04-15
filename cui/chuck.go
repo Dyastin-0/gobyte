@@ -38,6 +38,6 @@ func (cui *ClientUI) chuck(dir string) {
 
 	err = cui.client.ChuckFilesToPeers(peers, files)
 	if err != nil {
-		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to send files: %v", err)))
+		fmt.Println(styles.ERROR.Render(err.Error()))
 	}
 }

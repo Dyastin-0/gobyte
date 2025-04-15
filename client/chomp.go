@@ -33,7 +33,7 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onRequest f
 			listener.Close()
 			return
 		case msg := <-c.transferReqChan:
-			fmt.Println(styles.INFO.Render(fmt.Sprintf("file chomping request from %s (%s)", msg.SenderName, msg.IPAddress)))
+			fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
 
 			confirm, err := onRequest(msg)
 			if err != nil {
