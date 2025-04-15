@@ -16,7 +16,7 @@ A local area network file sharing CLI app.
 ### Installation
 
 ```
-go install github.com/Dyastin-0/gobyte/gobyte@latest
+go install github.com/Dyastin-0/gobyte@latest
 ```
 
 ### Basic Usage
