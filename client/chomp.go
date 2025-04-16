@@ -15,7 +15,6 @@ import (
 
 	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/Dyastin-0/gobyte/types"
-	"github.com/charmbracelet/huh/spinner"
 )
 
 func (c *Client) StartChompListener(ctx context.Context, dir string, onRequest func(msg types.Message) (bool, error)) {
@@ -56,12 +55,7 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onRequest f
 			fmt.Println(styles.INFO.Render("waiting for connection..."))
 
 			go func() {
-				err := spinner.New().ActionWithErr(
-					func(ctx context.Context) error {
-						return c.readFiles(listener, dir)
-					},
-				).Run()
-				if err != nil {
+				if err := c.readFiles(listener, dir); err != nil {
 					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chomp: %v", err)))
 					return
 				}
@@ -112,6 +106,7 @@ func (c *Client) readFiles(listener net.Listener, dir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to accept tcp connection: %v", err)
 	}
+
 	defer conn.Close()
 
 	fmt.Println(styles.INFO.Render("connected. receiving files..."))
@@ -184,7 +179,6 @@ func writeBytesToDir(reader io.Reader, fileSize int64, dir, fileName string) (in
 
 	copiedBytes, err := io.CopyN(file, reader, fileSize)
 	if err != nil {
-		file.Close()
 		return 0, fmt.Errorf("failed to copy %s: %v", file.Name(), err)
 	}
 

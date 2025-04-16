@@ -67,7 +67,7 @@ func (cui *ClientUI) showConfirm(title string, duration time.Duration) (bool, er
 	return confirm, nil
 }
 
-func (cui *ClientUI) selectPeers() ([]types.Peer, error) {
+func (cui *ClientUI) selectPeers() ([]*types.Peer, error) {
 	count, peers := cui.client.CountKnownPeers()
 
 	if count == 0 {
@@ -75,12 +75,10 @@ func (cui *ClientUI) selectPeers() ([]types.Peer, error) {
 	}
 
 	var peerOptions []huh.Option[string]
-	peerMap := make(map[string]types.Peer)
 
 	for _, peer := range peers {
 		option := fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)
 		peerOptions = append(peerOptions, huh.NewOption(option, peer.ID))
-		peerMap[peer.ID] = *peer
 	}
 
 	var selectedPeerIDs []string
@@ -98,9 +96,9 @@ func (cui *ClientUI) selectPeers() ([]types.Peer, error) {
 		return nil, err
 	}
 
-	var selectedPeers []types.Peer
+	var selectedPeers []*types.Peer
 	for _, id := range selectedPeerIDs {
-		selectedPeers = append(selectedPeers, peerMap[id])
+		selectedPeers = append(selectedPeers, peers[id])
 	}
 
 	return selectedPeers, nil
@@ -120,39 +118,9 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 		var options []huh.Option[string]
 
 		options = append(options, huh.NewOption("../", "../"))
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				options = append(options, huh.NewOption(entry.Name()+"/", entry.Name()))
-			}
-		}
-
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				fileInfo, enterr := entry.Info()
-				if enterr != nil {
-					continue
-				}
-
-				name := entry.Name()
-				fullPath := filepath.Join(currentDir, name)
-				displayName := name
-
-				if _, selected := selectedFiles[fullPath]; selected {
-					displayName = styles.SUCCESS.Render("[✓] " + name)
-				}
-
-				option := fmt.Sprintf("%s (%d bytes)", displayName, fileInfo.Size())
-				options = append(options, huh.NewOption(option, name))
-			}
-		}
-
+		options = formatAndAppendEntries(options, entries, selectedFiles, currentDir)
 		options = append(options, huh.NewOption("done", "done"))
 		options = append(options, huh.NewOption("cancel", "cancel"))
-
-		if len(options) == 2 {
-			return nil, fmt.Errorf("directory is empty: %s", currentDir)
-		}
 
 		form := huh.NewForm(
 			huh.NewGroup(
@@ -169,10 +137,6 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 		}
 
 		switch selected {
-		case "..":
-			currentDir = filepath.Dir(currentDir)
-			continue
-
 		case "cancel":
 			return nil, fmt.Errorf("file selection cancelled")
 
@@ -191,20 +155,22 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 			fullPath := filepath.Join(currentDir, selected)
 			fileInfo, err := os.Stat(fullPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to access %s", fullPath)
+				fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to access %s: %v", fullPath, err)))
+				continue
 			}
 
 			if fileInfo.IsDir() {
 				currentDir = fullPath
+				continue
+			}
+
+			if _, exists := selectedFiles[fullPath]; exists {
+				delete(selectedFiles, fullPath)
 			} else {
-				if _, exists := selectedFiles[fullPath]; exists {
-					delete(selectedFiles, fullPath)
-				} else {
-					selectedFiles[fullPath] = types.FileInfo{
-						Name: selected,
-						Size: fileInfo.Size(),
-						Path: fullPath,
-					}
+				selectedFiles[fullPath] = types.FileInfo{
+					Name: selected,
+					Size: fileInfo.Size(),
+					Path: fullPath,
 				}
 			}
 		}
@@ -225,4 +191,34 @@ func (cui *ClientUI) displayPeers() {
 	for _, peer := range peers {
 		fmt.Println(styles.SUCCESS.PaddingLeft(2).Render(fmt.Sprintf("%s (%s)", peer.Name, peer.IPAddress)))
 	}
+}
+
+func formatAndAppendEntries(options []huh.Option[string], entries []os.DirEntry, selectedFiles map[string]types.FileInfo, currentDir string) []huh.Option[string] {
+	for _, entry := range entries {
+		if entry.IsDir() {
+			options = append(options, huh.NewOption(entry.Name()+"/", entry.Name()))
+		}
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			fileInfo, enterr := entry.Info()
+			if enterr != nil {
+				continue
+			}
+
+			name := entry.Name()
+			fullPath := filepath.Join(currentDir, name)
+			displayName := name
+
+			if _, selected := selectedFiles[fullPath]; selected {
+				displayName = styles.SUCCESS.Render("[✓] " + name)
+			}
+
+			option := fmt.Sprintf("%s (%d bytes)", displayName, fileInfo.Size())
+			options = append(options, huh.NewOption(option, name))
+		}
+	}
+
+	return options
 }

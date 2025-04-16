@@ -17,17 +17,17 @@ import (
 	"github.com/google/uuid"
 )
 
-func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) error {
+func (c *Client) ChuckFilesToPeers(peers []*types.Peer, files []types.FileInfo) error {
 	var wg sync.WaitGroup
 	var sendErr error
 
 	for _, peer := range peers {
 		wg.Add(1)
 
-		go func(p types.Peer) {
+		go func(p *types.Peer) {
 			defer wg.Done()
 
-			err := c.writeFiles(&p, files)
+			err := c.writeFiles(p, files)
 			if err != nil {
 				sendErr = err
 				return
@@ -143,7 +143,6 @@ func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) erro
 	}
 
 	writer.WriteString("END\n")
-	writer.Flush()
 
 	return nil
 }
