@@ -6,7 +6,7 @@ import (
 	"github.com/Dyastin-0/gobyte/styles"
 )
 
-func (cui *ClientUI) menu(dir string) {
+func (cui *ClientUI) chuckMenu(dir string) {
 	for {
 		option := cui.showMainMenu()
 

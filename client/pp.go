@@ -11,18 +11,6 @@ import (
 	"golang.org/x/net/context"
 )
 
-func (c *Client) handleNewPeer(msg types.Message) {
-	peer := types.Peer{
-		ID:        msg.SenderID,
-		Name:      msg.SenderName,
-		IPAddress: msg.IPAddress,
-	}
-
-	c.mu.Lock()
-	c.knownPeers[peer.ID] = &peer
-	c.mu.Unlock()
-}
-
 func (c *Client) pingBroadcaster(ctx context.Context) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()

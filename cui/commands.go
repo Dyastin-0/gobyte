@@ -12,12 +12,7 @@ import (
 )
 
 func (cui *ClientUI) chuckCommand(ctx context.Context, cmd *cli.Command) error {
-	name := cmd.String("name")
-	if name != "" {
-		cui.client.Self.Name = name
-	}
-
-	fmt.Println(styles.TITLE.Render("gobyte"), styles.SUCCESS.Render(fmt.Sprintf("as %s (%s)", cui.client.Self.Name, cui.client.Self.IPAddress)))
+	cui.overrideDefaultName(cmd)
 
 	dir := cmd.String("dir")
 
@@ -27,18 +22,13 @@ func (cui *ClientUI) chuckCommand(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	cui.menu(dir)
+	cui.chuckMenu(dir)
 
 	return nil
 }
 
 func (cui *ClientUI) chompCommand(ctx context.Context, cmd *cli.Command) error {
-	name := cmd.String("name")
-	if name != "" {
-		cui.client.Self.Name = name
-	}
-
-	fmt.Println(styles.TITLE.Render("gobyte"), styles.SUCCESS.Render(fmt.Sprintf("as %s (%s)", cui.client.Self.Name, cui.client.Self.IPAddress)))
+	cui.overrideDefaultName(cmd)
 
 	dir := cmd.String("dir")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -55,4 +45,13 @@ func (cui *ClientUI) chompCommand(ctx context.Context, cmd *cli.Command) error {
 	<-shutdown
 
 	return nil
+}
+
+func (cui *ClientUI) overrideDefaultName(cmd *cli.Command) {
+	name := cmd.String("name")
+	if name != "" {
+		cui.client.Self.Name = name
+	}
+
+	fmt.Println(styles.TITLE.Render("gobyte"), styles.SUCCESS.Render(fmt.Sprintf("as %s (%s)", cui.client.Self.Name, cui.client.Self.IPAddress)))
 }

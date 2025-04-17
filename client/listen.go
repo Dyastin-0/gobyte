@@ -15,13 +15,13 @@ import (
 func (c *Client) listen(ctx context.Context) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.discoveryPort))
 	if err != nil {
-		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to resolve udp address: %v\n", err)))
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to resolve udp address: %v", err)))
 		return
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to listening on udp: %v\n", err)))
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to listening on udp: %v", err)))
 		return
 	}
 	defer conn.Close()
@@ -39,14 +39,14 @@ func (c *Client) listen(ctx context.Context) {
 					continue
 				}
 				if !strings.Contains(err.Error(), "i/o timeout") {
-					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to read from udp: %v\n", err)))
+					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to read from udp: %v", err)))
 				}
 				continue
 			}
 
 			var msg types.Message
 			if err := json.Unmarshal(buffer[:n], &msg); err != nil {
-				fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to unmarshal message: %v\n", err)))
+				fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to unmarshal message: %v", err)))
 				continue
 			}
 
@@ -94,4 +94,16 @@ func (c *Client) listen(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (c *Client) handleNewPeer(msg types.Message) {
+	peer := types.Peer{
+		ID:        msg.SenderID,
+		Name:      msg.SenderName,
+		IPAddress: msg.IPAddress,
+	}
+
+	c.mu.Lock()
+	c.knownPeers[peer.ID] = &peer
+	c.mu.Unlock()
 }

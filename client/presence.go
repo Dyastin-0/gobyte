@@ -34,6 +34,7 @@ func (c *Client) presenceBroadcaster(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			c.broadcastSelf(conn)
+
 		case <-ctx.Done():
 			return
 		}
