@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/urfave/cli/v3 v3.1.1
-	golang.org/x/net v0.36.0
+	golang.org/x/net v0.38.0
 )
 
 require (
