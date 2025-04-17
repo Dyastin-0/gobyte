@@ -52,7 +52,6 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onRequest f
 			}
 
 			listener.(*net.TCPListener).SetDeadline(time.Now().Add(15 * time.Second))
-			fmt.Println(styles.INFO.Render("waiting for connection..."))
 
 			go func() {
 				if err := c.readFiles(listener, dir); err != nil {
@@ -109,7 +108,6 @@ func (c *Client) readFiles(listener net.Listener, dir string) error {
 
 	defer conn.Close()
 
-	fmt.Println(styles.INFO.Render("connected. receiving files..."))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %v", dir, err)
 	}
@@ -122,7 +120,9 @@ func (c *Client) readFiles(listener net.Listener, dir string) error {
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("error reading file header: %v", err)
+
+			fmt.Println(styles.ERROR.Render(fmt.Sprintf("error reading file header: %v", err)))
+			continue
 		}
 
 		header = strings.TrimSpace(header)
@@ -130,21 +130,9 @@ func (c *Client) readFiles(listener net.Listener, dir string) error {
 			break
 		}
 
-		parts := strings.Split(header, ":")
-		if len(parts) != 3 {
-			return fmt.Errorf("invalid file header: %s", header)
-		}
-
-		fileName := parts[1]
-
-		if !strings.HasPrefix(header, "FILE:") {
-			fmt.Println(styles.ERROR.Render(fmt.Sprintf("%s has invalid header: %s", fileName, header)))
-			continue
-		}
-
-		fileSize, err := strconv.ParseInt(parts[2], 10, 64)
+		fileName, fileSize, err := readFileHeader(header)
 		if err != nil {
-			fmt.Println(styles.ERROR.Render(fmt.Sprintf("%s has invalid size: %d", fileName, fileSize)))
+			fmt.Println(styles.ERROR.Render(err.Error()))
 			continue
 		}
 
@@ -183,4 +171,24 @@ func writeBytesToDir(reader io.Reader, fileSize int64, dir, fileName string) (in
 	}
 
 	return copiedBytes, nil
+}
+
+func readFileHeader(header string) (string, int64, error) {
+	parts := strings.Split(header, ":")
+	if len(parts) != 3 {
+		return "", 0, fmt.Errorf("invalid file header: %s", header)
+	}
+
+	if !strings.HasPrefix(header, "FILE:") {
+		return "", 0, fmt.Errorf("invalid header: %s", header)
+	}
+
+	fileName := parts[1]
+
+	fileSize, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return "", 0, fmt.Errorf("%s has invalid size: %d", fileName, fileSize)
+	}
+
+	return fileName, fileSize, nil
 }

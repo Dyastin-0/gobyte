@@ -153,21 +153,24 @@ func copyN(fileInfo types.FileInfo, writer *bufio.Writer) (int64, error) {
 		return 0, fmt.Errorf("failed to open file: %v", err)
 	}
 
-	header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
-	if _, err = writer.WriteString(header); err != nil {
-		file.Close()
-		return 0, fmt.Errorf("error sending file header: %v", err)
+	defer file.Close()
+
+	if err = writeFileHeader(writer, fileInfo); err != nil {
+		return 0, fmt.Errorf("failed to write header: %v", err)
 	}
-	writer.Flush()
 
 	sentBytes, err := io.CopyN(writer, file, fileInfo.Size)
 	if err != nil {
-		file.Close()
-
 		return 0, fmt.Errorf("error sending file data: %v", err)
 	}
 
-	file.Close()
-
 	return sentBytes, nil
+}
+
+func writeFileHeader(writer *bufio.Writer, fileInfo types.FileInfo) error {
+	header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
+	if _, err := writer.WriteString(header); err != nil {
+		return fmt.Errorf("error sending file header: %v", err)
+	}
+	return nil
 }
