@@ -12,6 +12,7 @@ A local area network file sharing CLI app.
 - Multi-peer selection
 - Multi-file selection
 - File tree navigation
+- Encrypted TCP connection (TOFU)
 
 ### Installation
 
@@ -36,3 +37,7 @@ Set the `-d` or `-dir` flag to the directory you want to receive files to (defau
 ```
 gobyte chomp -d ~/Documents/gobyte/received
 ```
+
+### TODO
+
+- Fix tls fingerprint calculation
