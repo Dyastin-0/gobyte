@@ -10,7 +10,16 @@ import (
 )
 
 func (cui *ClientUI) chomp(ctx context.Context, dir string) {
-	cui.client.StartChompListener(ctx, dir, func(msg types.Message) (bool, error) {
+	onNewPeer := func(peerID string) bool {
+		trusted, err := cui.showConfirm(fmt.Sprintf("Add %s on trusted peers?", peerID), 15*time.Second)
+		if err != nil {
+			return false
+		}
+
+		return trusted
+	}
+
+	onRequest := func(msg types.Message) (bool, error) {
 		str := "file"
 		if len(msg.Files) > 1 {
 			str += "s"
@@ -25,5 +34,7 @@ func (cui *ClientUI) chomp(ctx context.Context, dir string) {
 			fmt.Sprintf("accept %d %s from %s?", len(msg.Files), str, msg.SenderName),
 			15*time.Second,
 		)
-	})
+	}
+
+	cui.client.StartChompListener(ctx, dir, onNewPeer, onRequest)
 }

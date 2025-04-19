@@ -14,58 +14,78 @@ import (
 	"time"
 
 	"github.com/Dyastin-0/gobyte/styles"
+	"github.com/Dyastin-0/gobyte/tofu"
 	"github.com/Dyastin-0/gobyte/types"
 )
 
-func (c *Client) StartChompListener(ctx context.Context, dir string, onRequest func(msg types.Message) (bool, error)) {
+func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string) bool, onRequest func(msg types.Message) (bool, error)) {
 	go c.presenceBroadcaster(ctx)
+	addr := fmt.Sprintf(":%d", c.transferPort)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", c.transferPort))
+	tofu, err := tofu.New(c.Self.ID, "", "")
 	if err != nil {
-		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to create tcp listener: %v", err)))
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to create tofu: %v", err)))
 		return
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			listener.Close()
-			return
-		case msg := <-c.transferReqChan:
-			fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
+	tofu.OnNewPeer = onNewPeer
 
-			confirm, err := onRequest(msg)
+	handler := func(listener net.Listener) {
+		for {
+			conn, err := listener.Accept()
 			if err != nil {
-				fmt.Println(styles.ERROR.Render(fmt.Sprintf("request from %s timed out", msg.SenderName)))
-				continue
+				fmt.Printf("Error accepting connection: %v\n", err)
 			}
 
-			err = c.sendAck(msg, confirm)
+			_, err = conn.Read([]byte{})
 			if err != nil {
-				fmt.Println(styles.ERROR.Render(fmt.Sprintf("%v", err)))
+				<-c.transferReqChan
 				continue
 			}
 
-			if !confirm {
-				fmt.Println(styles.INFO.Render("files rejected"))
-				continue
-			}
-
-			listener.(*net.TCPListener).SetDeadline(time.Now().Add(15 * time.Second))
-
-			go func() {
-				if err := c.readFiles(listener, dir); err != nil {
-					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chomp: %v", err)))
+			go func(conn net.Conn) {
+				select {
+				case <-ctx.Done():
+					listener.Close()
 					return
-				}
 
-				fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
-			}()
+				case msg := <-c.transferReqChan:
+					fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
+
+					confirm, err := onRequest(msg)
+					if err != nil {
+						fmt.Println(styles.ERROR.Render(fmt.Sprintf("request from %s timed out", msg.SenderName)))
+						break
+					}
+
+					err = c.sendAck(msg, "", confirm)
+					if err != nil {
+						fmt.Println(styles.ERROR.Render(fmt.Sprintf("%v", err)))
+						break
+					}
+
+					if !confirm {
+						fmt.Println(styles.INFO.Render("files rejected"))
+						break
+					}
+
+					go func(conn net.Conn) {
+						if err := c.readFiles(conn, dir); err != nil {
+							fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chomp: %v", err)))
+							return
+						}
+
+						fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
+					}(conn)
+				}
+			}(conn)
 		}
 	}
+
+	tofu.Start(addr, handler)
 }
 
-func (c *Client) sendAck(msg types.Message, confirm bool) error {
+func (c *Client) sendAck(msg types.Message, reason string, confirm bool) error {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", msg.IPAddress, c.discoveryPort))
 	if err != nil {
 		return fmt.Errorf("failed to resolve udp addr: %v", err)
@@ -84,6 +104,7 @@ func (c *Client) sendAck(msg types.Message, confirm bool) error {
 		SenderName: c.Self.Name,
 		IPAddress:  c.Self.IPAddress,
 		Accepted:   confirm,
+		Reason:     reason,
 		TransferID: msg.TransferID,
 	}
 
@@ -100,12 +121,7 @@ func (c *Client) sendAck(msg types.Message, confirm bool) error {
 	return nil
 }
 
-func (c *Client) readFiles(listener net.Listener, dir string) error {
-	conn, err := listener.Accept()
-	if err != nil {
-		return fmt.Errorf("failed to accept tcp connection: %v", err)
-	}
-
+func (c *Client) readFiles(conn net.Conn, dir string) error {
 	defer conn.Close()
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -121,8 +137,12 @@ func (c *Client) readFiles(listener net.Listener, dir string) error {
 				break
 			}
 
+			if err == tofu.ErrorConnectionDenied {
+				return err
+			}
+
 			fmt.Println(styles.ERROR.Render(fmt.Sprintf("error reading file header: %v", err)))
-			continue
+			break
 		}
 
 		header = strings.TrimSpace(header)

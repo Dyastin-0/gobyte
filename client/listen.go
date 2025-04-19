@@ -81,6 +81,7 @@ func (c *Client) listen(ctx context.Context) {
 				case c.transferReqChan <- msg:
 				default:
 					fmt.Println(styles.ERROR.Render(fmt.Sprintf("transfer channel is full, dropping request from %s", msg.SenderName)))
+					c.sendAck(msg, "busy", false)
 				}
 
 			case types.TypeTransferAck:
@@ -89,7 +90,7 @@ func (c *Client) listen(ctx context.Context) {
 				c.transferMU.RUnlock()
 
 				if exists {
-					ch <- msg.Accepted
+					ch <- msg
 				}
 			}
 		}

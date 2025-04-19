@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Dyastin-0/gobyte/styles"
+	"github.com/Dyastin-0/gobyte/tofu"
 	"github.com/Dyastin-0/gobyte/types"
 	"github.com/charmbracelet/huh/spinner"
 	"github.com/google/uuid"
@@ -45,7 +46,7 @@ func (c *Client) ChuckFilesToPeers(peers []*types.Peer, files []types.FileInfo) 
 func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
 	transferID := uuid.New().String()
 
-	ackChan := make(chan bool)
+	ackChan := make(chan types.Message)
 
 	c.transferMU.Lock()
 	c.pendingTransfers[transferID] = ackChan
@@ -64,14 +65,30 @@ func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
 
 	err = spinner.New().Title("waiting for response...").ActionWithErr(
 		func(ctx context.Context) error {
+			addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
+
+			tofu, errr := tofu.New(c.Self.ID, "", "")
+			if err != nil {
+				return fmt.Errorf("failed to create tofu: %v", errr)
+			}
+
+			conn, errr := tofu.Connect(addr)
+			if err != nil {
+				return fmt.Errorf("failed to connect to %s: %v", addr, errr)
+			}
+
 			select {
-			case accepted := <-ackChan:
-				if !accepted {
+			case msg := <-ackChan:
+				if !msg.Accepted && msg.Reason != "" {
+					return fmt.Errorf("%s (%s) is %s", msg.SenderName, msg.IPAddress, msg.Reason)
+				}
+
+				if !msg.Accepted {
 					return fmt.Errorf("%s rejected the request", peer.Name)
 				}
 
 				fmt.Println(styles.SUCCESS.Render(fmt.Sprintf("%s accepted the request", peer.Name)))
-				return c.writeFilesToPeer(peer, files)
+				return c.writeFilesToPeer(conn, files)
 
 			case <-time.After(15 * time.Second):
 				return fmt.Errorf("request for %s timed out", peer.Name)
@@ -117,17 +134,10 @@ func (c *Client) sendTransferReq(peer *types.Peer, files []types.FileInfo, trans
 	return nil
 }
 
-func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) error {
-	tcpAddr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
+func (c *Client) writeFilesToPeer(conn net.Conn, files []types.FileInfo) error {
+	defer conn.Close()
 
-	tcpConn, err := net.DialTimeout("tcp", tcpAddr, 15*time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to dial tcp: %v", err)
-	}
-
-	defer tcpConn.Close()
-
-	writer := bufio.NewWriter(tcpConn)
+	writer := bufio.NewWriter(conn)
 	defer writer.Flush()
 
 	for _, fileInfo := range files {

@@ -17,7 +17,7 @@ type Client struct {
 	mu         sync.RWMutex
 
 	transferReqChan  chan types.Message
-	pendingTransfers map[string]chan bool
+	pendingTransfers map[string]chan types.Message
 	transferMU       sync.RWMutex
 
 	pendingPong map[string]chan bool
@@ -46,8 +46,8 @@ func New(ctx context.Context) *Client {
 		Self: self,
 
 		knownPeers:       make(map[string]*types.Peer),
-		transferReqChan:  make(chan types.Message, 10),
-		pendingTransfers: make(map[string]chan bool),
+		transferReqChan:  make(chan types.Message, 1),
+		pendingTransfers: make(map[string]chan types.Message),
 		pendingPong:      make(map[string]chan bool),
 
 		discoveryPort: 8888,

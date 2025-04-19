@@ -29,5 +29,6 @@ type Message struct {
 	IPAddress  string     `json:"ip_address"`
 	Files      []FileInfo `json:"files,omitempty"`
 	Accepted   bool       `json:"accepted,omitempty"`
+	Reason     string     `json:"reason,omitempty"`
 	TransferID string     `json:"transfer_id,omitempty"`
 }
