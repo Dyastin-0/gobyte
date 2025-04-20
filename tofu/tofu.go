@@ -1,11 +1,11 @@
 package tofu
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -31,13 +31,8 @@ type Tofu struct {
 type ConnectionHandler func(net.Conn, net.Listener, string)
 
 func New(peerID, certPath, trustPath string) (*Tofu, error) {
-	homeDir, _ := os.UserHomeDir()
-
-	if certPath == "" {
-		certPath = fmt.Sprintf("%s/gobyte/cert", homeDir)
-	}
-	if trustPath == "" {
-		trustPath = fmt.Sprintf("%s/gobyte/trust", homeDir)
+	if certPath == "" || trustPath == "" {
+		return nil, ErrorMustSpecifyCertPaths
 	}
 
 	if err := os.MkdirAll(certPath, 0700); err != nil {
@@ -156,9 +151,12 @@ func (m *Tofu) checkPeerFingerprint(peerID string, cert []byte) (bool, error) {
 		return false, err
 	}
 
-	calculatedFingerprint := sha256.Sum256(cert)
+	fingerprint := sha256.Sum256(cert)
 
-	return subtle.ConstantTimeCompare(storedFingerprint, calculatedFingerprint[:]) == 1, nil
+	fmt.Printf("Stored: %x\n", storedFingerprint)
+	fmt.Printf("Calculated: %x\n", fingerprint)
+
+	return bytes.Equal(fingerprint[:], storedFingerprint), nil
 }
 
 func (m *Tofu) setupTLSConfigs() error {

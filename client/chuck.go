@@ -65,18 +65,6 @@ func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
 
 	err = spinner.New().Title("waiting for response...").ActionWithErr(
 		func(ctx context.Context) error {
-			addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
-
-			tofu, errr := tofu.New(c.Self.ID, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to create tofu: %v", errr)
-			}
-
-			conn, errr := tofu.Connect(addr)
-			if err != nil {
-				return fmt.Errorf("failed to connect to %s: %v", addr, errr)
-			}
-
 			select {
 			case msg := <-ackChan:
 				if !msg.Accepted && msg.Reason != "" {
@@ -88,7 +76,7 @@ func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
 				}
 
 				fmt.Println(styles.SUCCESS.Render(fmt.Sprintf("%s accepted the request", peer.Name)))
-				return c.writeFilesToPeer(conn, files)
+				return c.writeFilesToPeer(peer, files)
 
 			case <-time.After(15 * time.Second):
 				return fmt.Errorf("request for %s timed out", peer.Name)
@@ -134,7 +122,23 @@ func (c *Client) sendTransferReq(peer *types.Peer, files []types.FileInfo, trans
 	return nil
 }
 
-func (c *Client) writeFilesToPeer(conn net.Conn, files []types.FileInfo) error {
+func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) error {
+	addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
+
+	homeDir, _ := os.UserHomeDir()
+	certDir := fmt.Sprintf("%s/gobyte/cert", homeDir)
+	trustDir := fmt.Sprintf("%s/gobyte/trust", homeDir)
+
+	tofu, err := tofu.New(c.Self.ID, certDir, trustDir)
+	if err != nil {
+		return fmt.Errorf("failed to create tofu: %v", err)
+	}
+
+	conn, err := tofu.Connect(addr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to %s: %v", addr, err)
+	}
+
 	defer conn.Close()
 
 	writer := bufio.NewWriter(conn)

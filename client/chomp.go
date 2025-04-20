@@ -20,9 +20,13 @@ import (
 
 func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string) bool, onRequest func(msg types.Message) (bool, error)) {
 	go c.presenceBroadcaster(ctx)
-	addr := fmt.Sprintf(":%d", c.transferPort)
 
-	tofu, err := tofu.New(c.Self.ID, "", "")
+	addr := fmt.Sprintf(":%d", c.transferPort)
+	homeDir, _ := os.UserHomeDir()
+	certDir := fmt.Sprintf("%s/gobyte/cert", homeDir)
+	trustDir := fmt.Sprintf("%s/gobyte/trust", homeDir)
+
+	tofu, err := tofu.New(c.Self.ID, certDir, trustDir)
 	if err != nil {
 		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to create tofu: %v", err)))
 		return
@@ -32,53 +36,51 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 
 	handler := func(listener net.Listener) {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				fmt.Printf("Error accepting connection: %v\n", err)
-			}
+			select {
+			case <-ctx.Done():
+				listener.Close()
+				return
 
-			_, err = conn.Read([]byte{})
-			if err != nil {
-				<-c.transferReqChan
-				continue
-			}
+			case msg := <-c.transferReqChan:
+				fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
 
-			go func(conn net.Conn) {
-				select {
-				case <-ctx.Done():
-					listener.Close()
-					return
-
-				case msg := <-c.transferReqChan:
-					fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
-
-					confirm, err := onRequest(msg)
-					if err != nil {
-						fmt.Println(styles.ERROR.Render(fmt.Sprintf("request from %s timed out", msg.SenderName)))
-						break
-					}
-
-					err = c.sendAck(msg, "", confirm)
-					if err != nil {
-						fmt.Println(styles.ERROR.Render(fmt.Sprintf("%v", err)))
-						break
-					}
-
-					if !confirm {
-						fmt.Println(styles.INFO.Render("files rejected"))
-						break
-					}
-
-					go func(conn net.Conn) {
-						if err := c.readFiles(conn, dir); err != nil {
-							fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chomp: %v", err)))
-							return
-						}
-
-						fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
-					}(conn)
+				confirm, err := onRequest(msg)
+				if err != nil {
+					fmt.Println(styles.ERROR.Render(fmt.Sprintf("request from %s timed out", msg.SenderName)))
+					break
 				}
-			}(conn)
+
+				err = c.sendAck(msg, "", confirm)
+				if err != nil {
+					fmt.Println(styles.ERROR.Render(fmt.Sprintf("%v", err)))
+					break
+				}
+
+				if !confirm {
+					fmt.Println(styles.INFO.Render("files rejected"))
+					break
+				}
+
+				conn, err := listener.Accept()
+				if err != nil {
+					fmt.Printf("Error accepting connection: %v\n", err)
+				}
+
+				_, err = conn.Read([]byte{})
+				if err != nil {
+					<-c.transferReqChan
+					break
+				}
+
+				go func(conn net.Conn) {
+					if err := c.readFiles(conn, dir); err != nil {
+						fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chomp: %v", err)))
+						return
+					}
+
+					fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
+				}(conn)
+			}
 		}
 	}
 
