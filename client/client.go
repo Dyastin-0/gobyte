@@ -69,8 +69,8 @@ func New(ctx context.Context) *Client {
 }
 
 func (c *Client) CountKnownPeers() (int, map[string]*types.Peer) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	return len(c.knownPeers), c.knownPeers
 }
