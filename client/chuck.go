@@ -139,10 +139,26 @@ func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) erro
 		return fmt.Errorf("failed to connect to %s: %v", addr, err)
 	}
 
-	defer conn.Close()
-
 	writer := bufio.NewWriter(conn)
-	defer writer.Flush()
+	writer.Flush()
+
+	defer func() {
+		writer.Flush()
+		conn.Close()
+	}()
+
+	buffer := make([]byte, 1024)
+
+	n, err := conn.Read(buffer)
+	if err != nil {
+		return err
+	}
+
+	message := string(buffer[:n])
+
+	if message != "OK" {
+		return fmt.Errorf("invalid message")
+	}
 
 	for _, fileInfo := range files {
 		spinner.New().Title(styles.INFO.Render(fmt.Sprintf("chucking %s (%d)...", fileInfo.Name, fileInfo.Size))).Action(

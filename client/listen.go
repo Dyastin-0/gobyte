@@ -77,13 +77,13 @@ func (c *Client) listen(ctx context.Context) {
 				}
 
 			case types.TypeTransferReq:
-				select {
-				case c.transferReqChan <- msg:
-
-				default:
-					fmt.Println(styles.ERROR.Render(fmt.Sprintf("transfer channel is full, dropping request from %s", msg.SenderName)))
+				if c.Busy {
 					c.sendAck(msg, "busy", false)
+					break
 				}
+
+				c.Busy = true
+				c.transferReqChan <- msg
 
 			case types.TypeTransferAck:
 				c.transferMU.RLock()

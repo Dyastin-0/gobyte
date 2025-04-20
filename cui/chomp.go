@@ -27,7 +27,7 @@ func (cui *ClientUI) chomp(ctx context.Context, dir string) {
 
 		fmt.Println(styles.INFO.Render("files"))
 		for _, fileInfo := range msg.Files {
-			fmt.Println(styles.INFO.PaddingLeft(2).Render(fmt.Sprintf("%s (%d)", fileInfo.Name, fileInfo.Size)))
+			fmt.Println(styles.INFO.PaddingLeft(2).Render(fmt.Sprintf("%s (%d bytes)", fileInfo.Name, fileInfo.Size)))
 		}
 
 		return cui.showConfirm(

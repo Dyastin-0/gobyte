@@ -35,6 +35,10 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 	tofu.OnNewPeer = onNewPeer
 
 	handler := func(listener net.Listener) {
+		defer func() {
+			c.Busy = false
+		}()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -66,7 +70,7 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 					fmt.Printf("Error accepting connection: %v\n", err)
 				}
 
-				_, err = conn.Read([]byte{})
+				_, err = conn.Write([]byte("OK"))
 				if err != nil {
 					<-c.transferReqChan
 					break

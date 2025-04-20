@@ -12,6 +12,7 @@ import (
 
 type Client struct {
 	Self *types.Peer
+	Busy bool
 
 	knownPeers map[string]*types.Peer
 	mu         sync.RWMutex
