@@ -15,8 +15,8 @@ import (
 )
 
 func (t *Tofu) loadOrGenerateCert() (tls.Certificate, error) {
-	certFile := filepath.Join(t.CertPath, "gobyte.crt")
-	keyFile := filepath.Join(t.CertPath, "gobyte.key")
+	certFile := filepath.Join(t.CertPath, t.ID+".crt")
+	keyFile := filepath.Join(t.CertPath, t.ID+".key")
 
 	if _, err := os.Stat(certFile); err == nil {
 		if _, err := os.Stat(keyFile); err == nil {
