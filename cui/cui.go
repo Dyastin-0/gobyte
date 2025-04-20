@@ -16,8 +16,8 @@ type ClientUI struct {
 	client *client.Client
 }
 
-func New(client *client.Client) ClientUI {
-	return ClientUI{
+func New(client *client.Client) *ClientUI {
+	return &ClientUI{
 		client,
 	}
 }
