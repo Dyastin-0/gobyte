@@ -19,7 +19,7 @@ import (
 	"github.com/Dyastin-0/gobyte/types"
 )
 
-func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string) bool, onRequest func(msg types.Message) (bool, error)) {
+func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string, []byte) bool, onRequest func(msg types.Message) (bool, error)) {
 	go c.presenceBroadcaster(ctx)
 
 	addr := fmt.Sprintf(":%d", c.transferPort)
@@ -27,7 +27,9 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 	certDir := fmt.Sprintf("%s/gobyte/cert", homeDir)
 	trustDir := fmt.Sprintf("%s/gobyte/trust", homeDir)
 
-	tofu, err := tofu.New(c.Self.ID, certDir, trustDir)
+	tofuID := fmt.Sprintf("%s (%s)", c.Self.Name, c.Self.IPAddress)
+
+	tofu, err := tofu.New(tofuID, certDir, trustDir)
 	if err != nil {
 		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to create tofu: %v", err)))
 		return
@@ -43,7 +45,7 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 				return
 
 			case msg := <-c.transferReqChan:
-				fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
+				fmt.Println(styles.TITLE.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
 
 				err := func() error {
 					defer func() {

@@ -133,7 +133,9 @@ func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) erro
 	certDir := fmt.Sprintf("%s/gobyte/cert", homeDir)
 	trustDir := fmt.Sprintf("%s/gobyte/trust", homeDir)
 
-	tofu, err := tofu.New(c.Self.ID, certDir, trustDir)
+	tofuID := fmt.Sprintf("%s (%s)", c.Self.Name, c.Self.IPAddress)
+
+	tofu, err := tofu.New(tofuID, certDir, trustDir)
 	if err != nil {
 		return fmt.Errorf("failed to create tofu: %v", err)
 	}
@@ -142,6 +144,8 @@ func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) erro
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %v", addr, err)
 	}
+
+	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 
 	writer := bufio.NewWriter(conn)
 	writer.Flush()

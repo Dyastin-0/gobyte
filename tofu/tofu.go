@@ -8,7 +8,7 @@ import (
 
 type (
 	ConnectionHandler func(net.Listener)
-	NewPeerHandler    func(peerID string) bool
+	NewPeerHandler    func(string, []byte) bool
 )
 
 type Tofu struct {
@@ -37,7 +37,7 @@ func New(id, certPath, trustPath string) (*Tofu, error) {
 		ID:        id,
 		CertPath:  certPath,
 		TrustPath: trustPath,
-		OnNewPeer: func(peerID string) bool {
+		OnNewPeer: func(peerID string, fingerprint []byte) bool {
 			return true
 		},
 	}

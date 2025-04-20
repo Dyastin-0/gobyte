@@ -10,8 +10,11 @@ import (
 )
 
 func (cui *ClientUI) chomp(ctx context.Context, dir string) {
-	onNewPeer := func(peerID string) bool {
-		trusted, err := cui.showConfirm(fmt.Sprintf("Add %s on trusted peers?", peerID), 15*time.Second)
+	onNewPeer := func(peerID string, fingerprint []byte) bool {
+		fmt.Printf("the authenticity of host %s can't be established\n", peerID)
+		fmt.Printf("certificate fingerprint is SHA256: %x\n", fingerprint)
+
+		trusted, err := cui.showConfirm("Are you sure you want to continue connecting?", 15*time.Second)
 		if err != nil {
 			return false
 		}
