@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,10 +36,6 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 	tofu.OnNewPeer = onNewPeer
 
 	handler := func(listener net.Listener) {
-		defer func() {
-			c.Busy = false
-		}()
-
 		for {
 			select {
 			case <-ctx.Done():
@@ -48,42 +45,50 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 			case msg := <-c.transferReqChan:
 				fmt.Println(styles.INFO.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
 
-				confirm, err := onRequest(msg)
-				if err != nil {
-					fmt.Println(styles.ERROR.Render(fmt.Sprintf("request from %s timed out", msg.SenderName)))
-					break
-				}
+				err := func() error {
+					defer func() {
+						c.Busy = false
+					}()
 
-				err = c.sendAck(msg, "", confirm)
-				if err != nil {
-					fmt.Println(styles.ERROR.Render(fmt.Sprintf("%v", err)))
-					break
-				}
+					confirm, err := onRequest(msg)
+					if err != nil {
+						fmt.Println(styles.ERROR.Render())
+						return fmt.Errorf("request from %s timed out", msg.SenderName)
+					}
 
-				if !confirm {
-					fmt.Println(styles.INFO.Render("files rejected"))
-					break
-				}
+					err = c.sendAck(msg, "", confirm)
+					if err != nil {
+						return err
+					}
 
-				conn, err := listener.Accept()
-				if err != nil {
-					fmt.Printf("Error accepting connection: %v\n", err)
-				}
+					if !confirm {
+						return fmt.Errorf("request rejected")
+					}
 
-				_, err = conn.Write([]byte("OK"))
-				if err != nil {
-					<-c.transferReqChan
-					break
-				}
+					conn, err := listener.Accept()
+					if err != nil {
+						return fmt.Errorf("failed to accept connection: %v", err)
+					}
 
-				go func(conn net.Conn) {
+					conn = conn.(*tls.Conn)
+					conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
+
+					_, err = conn.Write([]byte("OK"))
+					if err != nil {
+						return err
+					}
+
 					if err := c.readFiles(conn, dir); err != nil {
-						fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chomp: %v", err)))
-						return
+						return fmt.Errorf("failed to chomp: %v", err)
 					}
 
 					fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
-				}(conn)
+
+					return nil
+				}()
+				if err != nil {
+					fmt.Println(styles.ERROR.Render(err.Error()))
+				}
 			}
 		}
 	}
