@@ -15,6 +15,5 @@ var (
 		Foreground(lipgloss.Color("#28a745"))
 
 	ERROR = lipgloss.NewStyle().
-		Bold(true).
 		Foreground(lipgloss.Color("#ee4b2b"))
 )
