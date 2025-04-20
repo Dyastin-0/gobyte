@@ -44,6 +44,10 @@ func (c *Client) ChuckFilesToPeers(peers []*types.Peer, files []types.FileInfo) 
 }
 
 func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
+	if c.writeFilesFunc != nil {
+		return c.writeFilesFunc(peer, files)
+	}
+
 	transferID := uuid.New().String()
 
 	ackChan := make(chan types.Message)

@@ -34,14 +34,13 @@ func (c *Client) presenceBroadcaster(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			c.broadcastSelf(conn)
-
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (c *Client) broadcastSelf(conn *net.UDPConn) {
+func (c *Client) newPresenceMessage() ([]byte, error) {
 	msg := types.Message{
 		Type:       types.TypeUDPreq,
 		SenderID:   c.Self.ID,
@@ -49,13 +48,17 @@ func (c *Client) broadcastSelf(conn *net.UDPConn) {
 		IPAddress:  c.Self.IPAddress,
 	}
 
-	jsonData, err := json.Marshal(msg)
+	return json.Marshal(msg)
+}
+
+func (c *Client) broadcastSelf(w interface{ Write([]byte) (int, error) }) {
+	messageBytes, err := c.newPresenceMessage()
 	if err != nil {
-		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to marshal broadcast messsage: %v", err)))
+		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to marshal broadcast message: %v", err)))
 		return
 	}
 
-	_, err = conn.Write(jsonData)
+	_, err = w.Write(messageBytes)
 	if err != nil {
 		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to send broadcast message: %v", err)))
 	}

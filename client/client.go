@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
+type writeFilesFunc func(peer *types.Peer, files []types.FileInfo) error
+
 type Client struct {
 	Self *types.Peer
 	Busy bool
@@ -29,6 +31,8 @@ type Client struct {
 	broadcastAddr string
 	discoveryMsg  string
 	maxBufferSize int64
+
+	writeFilesFunc
 }
 
 func New(ctx context.Context) *Client {

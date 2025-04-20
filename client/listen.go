@@ -50,50 +50,50 @@ func (c *Client) listen(ctx context.Context) {
 				continue
 			}
 
-			if msg.SenderID == c.Self.ID {
-				continue
-			}
+			c.handleUDPMessage(msg)
+		}
+	}
+}
 
-			switch msg.Type {
-			case types.TypeUDPreq:
-				c.handleNewPeer(msg)
+func (c *Client) handleUDPMessage(msg types.Message) {
+	if msg.SenderID == c.Self.ID {
+		return
+	}
 
-			case types.TypeUDPping:
-				c.mu.RLock()
-				peer, exists := c.knownPeers[msg.SenderID]
-				c.mu.RUnlock()
+	switch msg.Type {
+	case types.TypeUDPreq:
+		c.handleNewPeer(msg)
 
-				if exists {
-					c.sendPong(peer)
-				}
+	case types.TypeUDPping:
+		c.mu.RLock()
+		peer, exists := c.knownPeers[msg.SenderID]
+		c.mu.RUnlock()
+		if exists {
+			c.sendPong(peer)
+		}
 
-			case types.TypeUDPpong:
-				c.pongMU.RLock()
-				ch, exists := c.pendingPong[msg.SenderID]
-				c.pongMU.RUnlock()
+	case types.TypeUDPpong:
+		c.pongMU.RLock()
+		ch, exists := c.pendingPong[msg.SenderID]
+		c.pongMU.RUnlock()
+		if exists {
+			ch <- true
+		}
 
-				if exists {
-					ch <- true
-				}
+	case types.TypeTransferReq:
+		if c.Busy {
+			c.sendAck(msg, "busy", false)
+			break
+		}
+		c.Busy = true
+		c.transferReqChan <- msg
 
-			case types.TypeTransferReq:
-				if c.Busy {
-					c.sendAck(msg, "busy", false)
-					break
-				}
-
-				c.Busy = true
-				c.transferReqChan <- msg
-
-			case types.TypeTransferAck:
-				c.transferMU.RLock()
-				ch, exists := c.pendingTransfers[msg.TransferID]
-				c.transferMU.RUnlock()
-
-				if exists {
-					ch <- msg
-				}
-			}
+	case types.TypeTransferAck:
+		c.transferMU.RLock()
+		ch, exists := c.pendingTransfers[msg.TransferID]
+		c.transferMU.RUnlock()
+		if exists {
+			ch <- msg
 		}
 	}
 }

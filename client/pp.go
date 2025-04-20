@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/Dyastin-0/gobyte/types"
-	"golang.org/x/net/context"
 )
 
 func (c *Client) pingBroadcaster(ctx context.Context) {
@@ -18,10 +18,11 @@ func (c *Client) pingBroadcaster(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			<-ticker.C
+			c.mu.RLock()
 			for _, peer := range c.knownPeers {
 				go c.sendPing(peer)
 			}
+			c.mu.RUnlock()
 
 		case <-ctx.Done():
 			return
@@ -66,22 +67,21 @@ func (c *Client) sendPing(peer *types.Peer) {
 
 	select {
 	case <-pongChan:
-		c.pongMU.Lock()
-		delete(c.pendingPong, peer.ID)
-		c.pongMU.Unlock()
-
-		return
-
+		c.handlePingResponse(peer.ID, true)
 	case <-time.After(250 * time.Millisecond):
-		c.pongMU.Lock()
-		delete(c.pendingPong, peer.ID)
-		c.pongMU.Unlock()
+		c.handlePingResponse(peer.ID, false)
+	}
+}
 
+func (c *Client) handlePingResponse(peerID string, received bool) {
+	c.pongMU.Lock()
+	delete(c.pendingPong, peerID)
+	c.pongMU.Unlock()
+
+	if !received {
 		c.mu.Lock()
-		delete(c.knownPeers, peer.ID)
+		delete(c.knownPeers, peerID)
 		c.mu.Unlock()
-
-		return
 	}
 }
 
@@ -89,13 +89,14 @@ func (c *Client) sendPong(peer *types.Peer) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, c.discoveryPort))
 	if err != nil {
 		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to send pong: %v", err)))
+		return
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to dial peer: %v", err)))
+		return
 	}
-
 	defer conn.Close()
 
 	pongMsg := types.Message{
@@ -106,6 +107,7 @@ func (c *Client) sendPong(peer *types.Peer) {
 	pongMsgBytes, err := json.Marshal(pongMsg)
 	if err != nil {
 		fmt.Printf("failed to marshal pong: %v\n", err)
+		return
 	}
 
 	_, err = conn.Write(pongMsgBytes)
