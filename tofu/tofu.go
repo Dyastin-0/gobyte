@@ -188,7 +188,7 @@ func (m *Tofu) verifyPeer(cs tls.ConnectionState) error {
 
 	cert := cs.PeerCertificates[0]
 	peerID := cert.Subject.CommonName
-	fingerprint := cert.Raw
+	fingerprint, _ := x509.MarshalPKIXPublicKey(cert.Raw)
 
 	known, err := m.checkPeerFingerprint(peerID, fingerprint)
 	if err != nil {
