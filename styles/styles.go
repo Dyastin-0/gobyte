@@ -8,7 +8,6 @@ var (
 		Foreground(lipgloss.Color("#7d56f4"))
 
 	INFO = lipgloss.NewStyle().
-		Italic(true).
 		Foreground(lipgloss.Color("#888888"))
 
 	SUCCESS = lipgloss.NewStyle().
@@ -16,4 +15,7 @@ var (
 
 	ERROR = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#ee4b2b"))
+
+	WARNING = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#f1c40f"))
 )

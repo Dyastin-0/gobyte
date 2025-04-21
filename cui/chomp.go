@@ -11,10 +11,11 @@ import (
 
 func (cui *ClientUI) chomp(ctx context.Context, dir string) {
 	onNewPeer := func(peerID string, fingerprint []byte) bool {
-		fmt.Printf("the authenticity of host %s can't be established\n", peerID)
-		fmt.Printf("certificate fingerprint is SHA256: %x\n", fingerprint)
+		fmt.Println(styles.WARNING.Render("warning!"))
+		fmt.Printf("the authenticity of peer %s can't be established.\n", peerID)
+		fmt.Printf("tls certificate fingerprint is sha256:%x.\n", fingerprint)
 
-		trusted, err := cui.showConfirm("Are you sure you want to continue connecting?", 15*time.Second)
+		trusted, err := cui.showConfirm("do you trust this peer?", 15*time.Second)
 		if err != nil {
 			return false
 		}
