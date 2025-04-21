@@ -30,7 +30,7 @@ func (c *Client) pingBroadcaster(ctx context.Context) {
 	}
 }
 
-func (c *Client) sendPing(peer *types.Peer) {
+func (c *Client) sendPing(peer types.Peer) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, c.discoveryPort))
 	if err != nil {
 		fmt.Println("Failed to resolve address:", err)
@@ -85,7 +85,7 @@ func (c *Client) handlePingResponse(peerID string, received bool) {
 	}
 }
 
-func (c *Client) sendPong(peer *types.Peer) {
+func (c *Client) sendPong(peer types.Peer) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, c.discoveryPort))
 	if err != nil {
 		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to send pong: %v", err)))

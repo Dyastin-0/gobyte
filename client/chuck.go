@@ -18,14 +18,14 @@ import (
 	"github.com/google/uuid"
 )
 
-func (c *Client) ChuckFilesToPeers(peers []*types.Peer, files []types.FileInfo) error {
+func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) error {
 	var wg sync.WaitGroup
 	var sendErr error
 
 	for _, peer := range peers {
 		wg.Add(1)
 
-		go func(p *types.Peer) {
+		go func(p types.Peer) {
 			defer wg.Done()
 
 			err := c.writeFiles(p, files)
@@ -43,7 +43,7 @@ func (c *Client) ChuckFilesToPeers(peers []*types.Peer, files []types.FileInfo) 
 	return sendErr
 }
 
-func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
+func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo) error {
 	if c.writeFilesFunc != nil {
 		return c.writeFilesFunc(peer, files)
 	}
@@ -91,7 +91,7 @@ func (c *Client) writeFiles(peer *types.Peer, files []types.FileInfo) error {
 	return err
 }
 
-func (c *Client) sendTransferReq(peer *types.Peer, files []types.FileInfo, transferID string) error {
+func (c *Client) sendTransferReq(peer types.Peer, files []types.FileInfo, transferID string) error {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peer.IPAddress, c.discoveryPort))
 	if err != nil {
 		return fmt.Errorf("failed to resolve addr: %v", err)
@@ -126,7 +126,7 @@ func (c *Client) sendTransferReq(peer *types.Peer, files []types.FileInfo, trans
 	return nil
 }
 
-func (c *Client) writeFilesToPeer(peer *types.Peer, files []types.FileInfo) error {
+func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo) error {
 	addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
 
 	homeDir, _ := os.UserHomeDir()

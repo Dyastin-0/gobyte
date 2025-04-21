@@ -67,7 +67,7 @@ func (cui *ClientUI) showConfirm(title string, duration time.Duration) (bool, er
 	return confirm, nil
 }
 
-func (cui *ClientUI) selectPeers() ([]*types.Peer, error) {
+func (cui *ClientUI) selectPeers() ([]types.Peer, error) {
 	count, peers := cui.client.CountKnownPeers()
 
 	if count == 0 {
@@ -96,7 +96,7 @@ func (cui *ClientUI) selectPeers() ([]*types.Peer, error) {
 		return nil, err
 	}
 
-	var selectedPeers []*types.Peer
+	var selectedPeers []types.Peer
 	for _, id := range selectedPeerIDs {
 		selectedPeers = append(selectedPeers, peers[id])
 	}

@@ -10,13 +10,13 @@ import (
 	"github.com/google/uuid"
 )
 
-type writeFilesFunc func(peer *types.Peer, files []types.FileInfo) error
+type writeFilesFunc func(peer types.Peer, files []types.FileInfo) error
 
 type Client struct {
 	Self *types.Peer
 	Busy bool
 
-	knownPeers map[string]*types.Peer
+	knownPeers map[string]types.Peer
 	mu         sync.RWMutex
 
 	transferReqChan  chan types.Message
@@ -50,7 +50,7 @@ func New(ctx context.Context) *Client {
 	client := &Client{
 		Self: self,
 
-		knownPeers:       make(map[string]*types.Peer),
+		knownPeers:       make(map[string]types.Peer),
 		transferReqChan:  make(chan types.Message, 1),
 		pendingTransfers: make(map[string]chan types.Message),
 		pendingPong:      make(map[string]chan bool),
@@ -68,7 +68,7 @@ func New(ctx context.Context) *Client {
 	return client
 }
 
-func (c *Client) CountKnownPeers() (int, map[string]*types.Peer) {
+func (c *Client) CountKnownPeers() (int, map[string]types.Peer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

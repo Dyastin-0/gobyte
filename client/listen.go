@@ -106,6 +106,6 @@ func (c *Client) handleNewPeer(msg types.Message) {
 	}
 
 	c.mu.Lock()
-	c.knownPeers[peer.ID] = &peer
+	c.knownPeers[peer.ID] = peer
 	c.mu.Unlock()
 }

@@ -207,7 +207,7 @@ func TestSendTransferReq(t *testing.T) {
 
 	localAddr := server.LocalAddr().(*net.UDPAddr)
 
-	peer := &types.Peer{
+	peer := types.Peer{
 		ID:        "test-peer",
 		Name:      "Test Peer",
 		IPAddress: "127.0.0.1",
@@ -267,12 +267,12 @@ func TestChuckFilesToPeers(t *testing.T) {
 
 	peersReceived := make(map[string]bool)
 
-	client.writeFilesFunc = func(p *types.Peer, f []types.FileInfo) error {
+	client.writeFilesFunc = func(p types.Peer, f []types.FileInfo) error {
 		peersReceived[p.ID] = true
 		return nil
 	}
 
-	peers := []*types.Peer{
+	peers := []types.Peer{
 		{ID: "peer1", Name: "Peer 1", IPAddress: "127.0.0.1"},
 		{ID: "peer2", Name: "Peer 2", IPAddress: "127.0.0.2"},
 	}
@@ -292,7 +292,7 @@ func TestChuckFilesToPeers(t *testing.T) {
 func TestListen(t *testing.T) {
 	client := &Client{
 		Self:       &types.Peer{ID: "self"},
-		knownPeers: make(map[string]*types.Peer),
+		knownPeers: make(map[string]types.Peer),
 	}
 
 	msg := types.Message{
@@ -311,11 +311,11 @@ func TestListen(t *testing.T) {
 
 func TestHandlePingResponse_RemovesPeerIfNoResponse(t *testing.T) {
 	c := &Client{
-		knownPeers:  make(map[string]*types.Peer),
+		knownPeers:  make(map[string]types.Peer),
 		pendingPong: make(map[string]chan bool),
 	}
 
-	c.knownPeers["peer1"] = &types.Peer{
+	c.knownPeers["peer1"] = types.Peer{
 		ID:        "peer1",
 		Name:      "Tester",
 		IPAddress: "192.168.1.1",
@@ -327,7 +327,7 @@ func TestHandlePingResponse_RemovesPeerIfNoResponse(t *testing.T) {
 		t.Errorf("peer1 should have been removed after no pong")
 	}
 
-	c.knownPeers["peer1"] = &types.Peer{
+	c.knownPeers["peer1"] = types.Peer{
 		ID:        "peer1",
 		Name:      "Tester",
 		IPAddress: "192.168.1.1",
