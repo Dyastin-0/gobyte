@@ -11,7 +11,7 @@ import (
 
 func (cui *ClientUI) chomp(ctx context.Context, dir string) {
 	onNewPeer := func(peerID string, fingerprint []byte) bool {
-		fmt.Println(styles.WARNING.Render("warning!"))
+		fmt.Println(styles.WARNING.Bold(true).Render("warning!"))
 		fmt.Printf("the authenticity of peer %s can't be established.\n", peerID)
 		fmt.Printf("tls certificate fingerprint is sha256:%x.\n", fingerprint)
 

@@ -165,7 +165,7 @@ func TestVerifyPeer(t *testing.T) {
 	peerID := "peerABC"
 	tofu := &Tofu{
 		TrustPath: tmp,
-		OnNewPeer: func(id string) bool {
+		OnNewPeer: func(id string, fingerprint []byte) bool {
 			return id == peerID
 		},
 	}
@@ -196,7 +196,7 @@ func TestVerifyPeer(t *testing.T) {
 	})
 
 	t.Run("unknown cert, rejected by OnNewPeer", func(t *testing.T) {
-		tofu.OnNewPeer = func(id string) bool {
+		tofu.OnNewPeer = func(id string, fingerprint []byte) bool {
 			return false
 		}
 		cert := createTestCert(t, "rejected-peer")
