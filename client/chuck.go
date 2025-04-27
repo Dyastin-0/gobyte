@@ -66,6 +66,8 @@ func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, p *progress
 		return err
 	}
 
+	fmt.Println(styles.INFO.Render(fmt.Sprintf("request sent to %s (%s), waiting for response...", peer.Name, peer.IPAddress)))
+
 	select {
 	case msg := <-ackChan:
 		if !msg.Accepted && msg.Reason != "" {
@@ -177,7 +179,7 @@ func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, p *progress
 		return 0, fmt.Errorf("failed to write header: %v", err)
 	}
 
-	bar := p.NewBar(conn, file, fileInfo.Size, fmt.Sprintf("(%s %s) chucking %s...", peer.Name, peer.IPAddress, fileInfo.Name))
+	bar := p.NewBar(conn, file, fileInfo.Size, fmt.Sprintf("%s (%s) -> chucking %s...", peer.Name, peer.IPAddress, fileInfo.Name))
 
 	sentBytes, err := p.Execute(conn, file, fileInfo.Size, bar)
 	if err != nil {
