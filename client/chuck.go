@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Dyastin-0/gobyte/progressbar"
+	"github.com/Dyastin-0/gobyte/progress"
 	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/Dyastin-0/gobyte/tofu"
 	"github.com/Dyastin-0/gobyte/types"
@@ -17,7 +17,7 @@ import (
 )
 
 func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) error {
-	pb := progressbar.New()
+	progress := progress.New()
 
 	var wg sync.WaitGroup
 	var sendErr error
@@ -28,7 +28,7 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 		go func(p types.Peer) {
 			defer wg.Done()
 
-			err := c.writeFiles(p, files, pb)
+			err := c.writeFiles(p, files, progress)
 			if err != nil {
 				sendErr = err
 				return
@@ -37,12 +37,12 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 	}
 
 	wg.Wait()
-	pb.Wait()
+	progress.Wait()
 
 	return sendErr
 }
 
-func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, pb *progressbar.ProgressBar) error {
+func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, p *progress.Progress) error {
 	if c.writeFilesFunc != nil {
 		return c.writeFilesFunc(peer, files)
 	}
@@ -76,7 +76,7 @@ func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, pb *progres
 			return fmt.Errorf("%s rejected the request", peer.Name)
 		}
 
-		c.writeFilesToPeer(peer, files, pb)
+		c.writeFilesToPeer(peer, files, p)
 
 		return nil
 
@@ -120,7 +120,7 @@ func (c *Client) sendTransferReq(peer types.Peer, files []types.FileInfo, transf
 	return nil
 }
 
-func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, pb *progressbar.ProgressBar) error {
+func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, p *progress.Progress) error {
 	addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
 
 	homeDir, _ := os.UserHomeDir()
@@ -157,7 +157,7 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, pb *p
 	}
 
 	for _, fileInfo := range files {
-		if _, err := copyN(conn, fileInfo, peer, pb); err != nil {
+		if _, err := copyN(conn, fileInfo, peer, p); err != nil {
 			fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chuck %s: %v", fileInfo.Name, err)))
 		}
 	}
@@ -165,7 +165,7 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, pb *p
 	return nil
 }
 
-func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, pb *progressbar.ProgressBar) (int64, error) {
+func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, p *progress.Progress) (int64, error) {
 	file, err := os.Open(fileInfo.Path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %v", err)
@@ -177,9 +177,9 @@ func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, pb *progres
 		return 0, fmt.Errorf("failed to write header: %v", err)
 	}
 
-	bar := pb.NewBar(conn, file, fileInfo.Size, fmt.Sprintf("(%s %s) chucking %s...", peer.Name, peer.IPAddress, fileInfo.Name))
+	bar := p.NewBar(conn, file, fileInfo.Size, fmt.Sprintf("(%s %s) chucking %s...", peer.Name, peer.IPAddress, fileInfo.Name))
 
-	sentBytes, err := pb.Execute(conn, file, fileInfo.Size, bar)
+	sentBytes, err := p.Execute(conn, file, fileInfo.Size, bar)
 	if err != nil {
 		return 0, fmt.Errorf("error sending file data: %v", err)
 	}

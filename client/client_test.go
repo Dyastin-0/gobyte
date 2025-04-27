@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Dyastin-0/gobyte/progressbar"
+	"github.com/Dyastin-0/gobyte/progress"
 	"github.com/Dyastin-0/gobyte/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -193,9 +193,9 @@ func TestCopyN(t *testing.T) {
 		Size: int64(len(testContent)),
 	}
 
-	pb := progressbar.New()
+	p := progress.New()
 
-	written, err := copyN(writer, fileInfo, peer, pb)
+	written, err := copyN(writer, fileInfo, peer, p)
 	assert.Nil(t, err)
 	writer.Flush()
 

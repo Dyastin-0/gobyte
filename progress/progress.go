@@ -1,4 +1,4 @@
-package progressbar
+package progress
 
 import (
 	"io"
@@ -8,7 +8,7 @@ import (
 	"github.com/vbauerster/mpb/v8/decor"
 )
 
-type ProgressBar struct {
+type Progress struct {
 	progress *mpb.Progress
 	mu       sync.Mutex
 }
@@ -24,17 +24,17 @@ func (c *CopyN) Read(p []byte) (n int, err error) {
 	return
 }
 
-func New() *ProgressBar {
-	return &ProgressBar{
+func New() *Progress {
+	return &Progress{
 		progress: mpb.New(),
 	}
 }
 
-func (pb *ProgressBar) NewBar(dst io.Writer, src io.Reader, n int64, text string) *mpb.Bar {
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
+func (p *Progress) NewBar(dst io.Writer, src io.Reader, n int64, text string) *mpb.Bar {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	bar := pb.progress.AddBar(n,
+	bar := p.progress.AddBar(n,
 		mpb.PrependDecorators(
 			decor.Name(text, decor.WC{W: 12, C: decor.DindentRight}),
 			decor.CountersKibiByte(" % .2f / % .2f", decor.WCSyncWidth),
@@ -47,7 +47,7 @@ func (pb *ProgressBar) NewBar(dst io.Writer, src io.Reader, n int64, text string
 	return bar
 }
 
-func (pb *ProgressBar) Execute(dst io.Writer, src io.Reader, n int64, bar *mpb.Bar) (int64, error) {
+func (p *Progress) Execute(dst io.Writer, src io.Reader, n int64, bar *mpb.Bar) (int64, error) {
 	proxyReader := &CopyN{
 		reader: src,
 		bar:    bar,
@@ -55,20 +55,20 @@ func (pb *ProgressBar) Execute(dst io.Writer, src io.Reader, n int64, bar *mpb.B
 	return io.CopyN(dst, proxyReader, n)
 }
 
-func (pb *ProgressBar) Wait() {
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
+func (p *Progress) Wait() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	pb.progress.Wait()
+	p.progress.Wait()
 }
 
-func (pb *ProgressBar) Reset() {
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
+func (p *Progress) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	if pb.progress != nil {
-		pb.progress.Wait()
+	if p.progress != nil {
+		p.progress.Wait()
 	}
 
-	pb.progress = mpb.New()
+	p.progress = mpb.New()
 }
