@@ -72,5 +72,15 @@ func (c *Client) CountKnownPeers() (int, map[string]types.Peer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return len(c.knownPeers), c.knownPeers
+	return len(c.knownPeers), cloneMap(c.knownPeers)
+}
+
+func cloneMap[T any](m map[string]T) map[string]T {
+	newMap := make(map[string]T, len(m))
+
+	for k, v := range m {
+		newMap[k] = v
+	}
+
+	return newMap
 }

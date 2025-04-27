@@ -34,8 +34,6 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 				return
 			}
 		}(peer)
-
-		fmt.Println(peer.IPAddress)
 	}
 
 	wg.Wait()
