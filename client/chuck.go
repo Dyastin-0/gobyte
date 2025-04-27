@@ -1,24 +1,24 @@
 package client
 
 import (
-	"bufio"
-	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/Dyastin-0/gobyte/progressbar"
 	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/Dyastin-0/gobyte/tofu"
 	"github.com/Dyastin-0/gobyte/types"
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/google/uuid"
 )
 
 func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) error {
+	pb := progressbar.New()
+
 	var wg sync.WaitGroup
 	var sendErr error
 
@@ -28,22 +28,23 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 		go func(p types.Peer) {
 			defer wg.Done()
 
-			err := c.writeFiles(p, files)
+			err := c.writeFiles(p, files, pb)
 			if err != nil {
 				sendErr = err
 				return
 			}
-
-			fmt.Println(styles.SUCCESS.Bold(true).Render(fmt.Sprintf("all files chucked to %s ✓", peer.Name)))
 		}(peer)
+
+		fmt.Println(peer.IPAddress)
 	}
 
 	wg.Wait()
+	pb.Wait()
 
 	return sendErr
 }
 
-func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo) error {
+func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, pb *progressbar.ProgressBar) error {
 	if c.writeFilesFunc != nil {
 		return c.writeFilesFunc(peer, files)
 	}
@@ -67,28 +68,23 @@ func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo) error {
 		return err
 	}
 
-	err = spinner.New().Title("waiting for response...").ActionWithErr(
-		func(ctx context.Context) error {
-			select {
-			case msg := <-ackChan:
-				if !msg.Accepted && msg.Reason != "" {
-					return fmt.Errorf("%s (%s) is %s", msg.SenderName, msg.IPAddress, msg.Reason)
-				}
+	select {
+	case msg := <-ackChan:
+		if !msg.Accepted && msg.Reason != "" {
+			return fmt.Errorf("%s (%s) is %s", msg.SenderName, msg.IPAddress, msg.Reason)
+		}
 
-				if !msg.Accepted {
-					return fmt.Errorf("%s rejected the request", peer.Name)
-				}
+		if !msg.Accepted {
+			return fmt.Errorf("%s rejected the request", peer.Name)
+		}
 
-				fmt.Println(styles.SUCCESS.Render(fmt.Sprintf("%s accepted the request", peer.Name)))
-				return c.writeFilesToPeer(peer, files)
+		c.writeFilesToPeer(peer, files, pb)
 
-			case <-time.After(15 * time.Second):
-				return fmt.Errorf("request for %s timed out", peer.Name)
-			}
-		},
-	).Run()
+		return nil
 
-	return err
+	case <-time.After(15 * time.Second):
+		return fmt.Errorf("request for %s timed out", peer.Name)
+	}
 }
 
 func (c *Client) sendTransferReq(peer types.Peer, files []types.FileInfo, transferID string) error {
@@ -126,7 +122,7 @@ func (c *Client) sendTransferReq(peer types.Peer, files []types.FileInfo, transf
 	return nil
 }
 
-func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo) error {
+func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, pb *progressbar.ProgressBar) error {
 	addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
 
 	homeDir, _ := os.UserHomeDir()
@@ -145,15 +141,9 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo) error
 		return fmt.Errorf("failed to connect to %s: %v", addr, err)
 	}
 
+	defer conn.Close()
+
 	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
-
-	writer := bufio.NewWriter(conn)
-	writer.Flush()
-
-	defer func() {
-		writer.Flush()
-		conn.Close()
-	}()
 
 	buffer := make([]byte, 1024)
 
@@ -169,23 +159,15 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo) error
 	}
 
 	for _, fileInfo := range files {
-		spinner.New().Title(styles.INFO.Render(fmt.Sprintf("chucking %s (%d)...", fileInfo.Name, fileInfo.Size))).Action(
-			func() {
-				if sentBytes, err := copyN(fileInfo, writer); err != nil {
-					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chuck %s: %v", fileInfo.Name, err)))
-				} else {
-					fmt.Println(styles.SUCCESS.Render(fmt.Sprintf("%s chucked (%d bytes)", fileInfo.Name, sentBytes)))
-				}
-			},
-		).Run()
+		if _, err := copyN(conn, fileInfo, peer, pb); err != nil {
+			fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chuck %s: %v", fileInfo.Name, err)))
+		}
 	}
-
-	writer.WriteString("END\n")
 
 	return nil
 }
 
-func copyN(fileInfo types.FileInfo, writer *bufio.Writer) (int64, error) {
+func copyN(conn *tls.Conn, fileInfo types.FileInfo, peer types.Peer, pb *progressbar.ProgressBar) (int64, error) {
 	file, err := os.Open(fileInfo.Path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %v", err)
@@ -193,11 +175,13 @@ func copyN(fileInfo types.FileInfo, writer *bufio.Writer) (int64, error) {
 
 	defer file.Close()
 
-	if err = writeFileHeader(writer, fileInfo); err != nil {
+	if err = writeFileHeader(conn, fileInfo); err != nil {
 		return 0, fmt.Errorf("failed to write header: %v", err)
 	}
 
-	sentBytes, err := io.CopyN(writer, file, fileInfo.Size)
+	bar := pb.NewBar(conn, file, fileInfo.Size, fmt.Sprintf("(%s %s) chucking %s...", peer.Name, peer.IPAddress, fileInfo.Name))
+
+	sentBytes, err := pb.Execute(conn, file, fileInfo.Size, bar)
 	if err != nil {
 		return 0, fmt.Errorf("error sending file data: %v", err)
 	}
@@ -205,9 +189,9 @@ func copyN(fileInfo types.FileInfo, writer *bufio.Writer) (int64, error) {
 	return sentBytes, nil
 }
 
-func writeFileHeader(writer *bufio.Writer, fileInfo types.FileInfo) error {
+func writeFileHeader(conn *tls.Conn, fileInfo types.FileInfo) error {
 	header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
-	if _, err := writer.WriteString(header); err != nil {
+	if _, err := conn.Write([]byte(header)); err != nil {
 		return fmt.Errorf("error sending file header: %v", err)
 	}
 	return nil

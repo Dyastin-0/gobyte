@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Dyastin-0/gobyte/progressbar"
 	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/Dyastin-0/gobyte/tofu"
 	"github.com/Dyastin-0/gobyte/types"
@@ -196,12 +197,21 @@ func writeBytesToDir(reader io.Reader, fileSize int64, dir, fileName string) (in
 		return 0, fmt.Errorf("failed to create %s: %v", filePath, err)
 	}
 
-	defer file.Close()
+	pb := progressbar.New()
 
-	copiedBytes, err := io.CopyN(file, reader, fileSize)
+	defer func() {
+		file.Close()
+		pb.Reset()
+	}()
+
+	bar := pb.NewBar(file, reader, fileSize, fmt.Sprintf("chomping %s...", fileName))
+
+	copiedBytes, err := pb.Execute(file, reader, fileSize, bar)
 	if err != nil {
 		return 0, fmt.Errorf("failed to copy %s: %v", file.Name(), err)
 	}
+
+	pb.Wait()
 
 	return copiedBytes, nil
 }
