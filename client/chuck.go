@@ -1,9 +1,9 @@
 package client
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -165,7 +165,7 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, pb *p
 	return nil
 }
 
-func copyN(conn *tls.Conn, fileInfo types.FileInfo, peer types.Peer, pb *progressbar.ProgressBar) (int64, error) {
+func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, pb *progressbar.ProgressBar) (int64, error) {
 	file, err := os.Open(fileInfo.Path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %v", err)
@@ -187,7 +187,7 @@ func copyN(conn *tls.Conn, fileInfo types.FileInfo, peer types.Peer, pb *progres
 	return sentBytes, nil
 }
 
-func writeFileHeader(conn *tls.Conn, fileInfo types.FileInfo) error {
+func writeFileHeader(conn io.Writer, fileInfo types.FileInfo) error {
 	header := fmt.Sprintf("FILE:%s:%d\n", fileInfo.Name, fileInfo.Size)
 	if _, err := conn.Write([]byte(header)); err != nil {
 		return fmt.Errorf("error sending file header: %v", err)

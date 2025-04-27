@@ -24,7 +24,7 @@ func New(client *client.Client) *ClientUI {
 
 func (cui *ClientUI) showMainMenu() string {
 	var option string
-	count, _ := cui.client.CountKnownPeers()
+	count, _ := cui.client.GetKnownPeers()
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -68,7 +68,7 @@ func (cui *ClientUI) showConfirm(title string, duration time.Duration) (bool, er
 }
 
 func (cui *ClientUI) selectPeers() ([]types.Peer, error) {
-	count, peers := cui.client.CountKnownPeers()
+	count, peers := cui.client.GetKnownPeers()
 
 	if count == 0 {
 		return nil, fmt.Errorf("no chompers discovered")
@@ -179,7 +179,7 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 }
 
 func (cui *ClientUI) displayPeers() {
-	count, peers := cui.client.CountKnownPeers()
+	count, peers := cui.client.GetKnownPeers()
 
 	if count == 0 {
 		fmt.Println(styles.INFO.Render("no chompers found"))

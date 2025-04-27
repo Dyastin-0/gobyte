@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Dyastin-0/gobyte/progressbar"
 	"github.com/Dyastin-0/gobyte/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -180,13 +181,21 @@ func TestCopyN(t *testing.T) {
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
 
+	peer := types.Peer{
+		ID:        "test",
+		Name:      "test peer",
+		IPAddress: "127.0.0.1",
+	}
+
 	fileInfo := types.FileInfo{
 		Name: "test.txt",
 		Path: tempFile.Name(),
 		Size: int64(len(testContent)),
 	}
 
-	written, err := copyN(fileInfo, writer)
+	pb := progressbar.New()
+
+	written, err := copyN(writer, fileInfo, peer, pb)
 	assert.Nil(t, err)
 	writer.Flush()
 
