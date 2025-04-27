@@ -204,7 +204,7 @@ func writeBytesToDir(reader io.Reader, fileSize int64, dir, fileName string) (in
 		p.Reset()
 	}()
 
-	bar := p.NewBar(file, reader, fileSize, fmt.Sprintf("chomping %s...", fileName))
+	bar := p.NewBar(fileSize, fmt.Sprintf("chomping %s...", fileName))
 
 	copiedBytes, err := p.Execute(file, reader, fileSize, bar)
 	if err != nil {

@@ -30,7 +30,7 @@ func New() *Progress {
 	}
 }
 
-func (p *Progress) NewBar(dst io.Writer, src io.Reader, n int64, text string) *mpb.Bar {
+func (p *Progress) NewBar(n int64, text string) *mpb.Bar {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
