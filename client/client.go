@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"maps"
 	"os"
 	"sync"
 
@@ -77,10 +78,6 @@ func (c *Client) GetKnownPeers() (int, map[string]types.Peer) {
 
 func cloneMap[T any](m map[string]T) map[string]T {
 	newMap := make(map[string]T, len(m))
-
-	for k, v := range m {
-		newMap[k] = v
-	}
-
+	maps.Copy(newMap, m)
 	return newMap
 }
