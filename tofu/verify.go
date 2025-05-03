@@ -21,9 +21,10 @@ func (t *Tofu) verifyPeer(cs tls.ConnectionState) error {
 	}
 
 	sha256Fingerprint := sha256.Sum256(fingerprint)
+	prefixedFingerprint := t.prefixFingerprint(sha256Fingerprint[:])
 
 	if !known {
-		if !t.OnNewPeer(peerID, sha256Fingerprint[:]) {
+		if !t.OnNewPeer(peerID, prefixedFingerprint) {
 			return ErrorConnectionDenied
 		}
 		err = t.savePeerFingerprint(peerID, fingerprint)

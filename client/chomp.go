@@ -20,7 +20,7 @@ import (
 	"github.com/Dyastin-0/gobyte/types"
 )
 
-func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string, []byte) bool, onRequest func(msg types.Message) (bool, error)) {
+func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string, string) bool, onRequest func(msg types.Message) (bool, error)) {
 	go c.presenceBroadcaster(ctx)
 
 	addr := fmt.Sprintf(":%d", c.transferPort)
@@ -170,13 +170,11 @@ func (c *Client) readFiles(conn net.Conn, dir string) error {
 			continue
 		}
 
-		wroteBytes, err := writeBytesToDir(reader, fileSize, dir, fileName)
+		_, err = writeBytesToDir(reader, fileSize, dir, fileName)
 		if err != nil {
 			fmt.Println(styles.ERROR.Render(err.Error()))
 			continue
 		}
-
-		fmt.Println(styles.SUCCESS.Render(fmt.Sprintf("chomped %s (%d bytes)", fileName, wroteBytes)))
 	}
 
 	return nil

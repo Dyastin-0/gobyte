@@ -10,10 +10,10 @@ import (
 )
 
 func (cui *ClientUI) chomp(ctx context.Context, dir string) {
-	onNewPeer := func(peerID string, fingerprint []byte) bool {
+	onNewPeer := func(peerID string, fingerprint string) bool {
 		fmt.Println(styles.WARNING.Bold(true).Render("warning!"))
 		fmt.Printf("the authenticity of peer %s can't be established.\n", peerID)
-		fmt.Printf("tls certificate fingerprint is sha256:%x.\n", fingerprint)
+		fmt.Printf("tls certificate fingerprint is %s.\n", fingerprint)
 
 		trusted, err := cui.showConfirm("do you trust this peer?", 15*time.Second)
 		if err != nil {
