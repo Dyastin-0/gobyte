@@ -117,6 +117,7 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 
 		var options []huh.Option[string]
 
+		options = append(options, huh.NewOption("all", "all"))
 		options = append(options, huh.NewOption("../", "../"))
 		options = formatAndAppendEntries(options, entries, selectedFiles, currentDir)
 		options = append(options, huh.NewOption("done", "done"))
@@ -137,6 +138,35 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 		}
 
 		switch selected {
+		case "all":
+			for _, option := range options {
+				if option.Value == "cancel" || option.Value == "done" || option.Value == "all" {
+					continue
+				}
+
+				fullPath := filepath.Join(currentDir, option.Value)
+
+				fileInfo, err := os.Stat(fullPath)
+				if err != nil {
+					fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to access %s: %v", fullPath, err)))
+					continue
+				}
+
+				if fileInfo.IsDir() {
+					continue
+				}
+
+				if _, exists := selectedFiles[fullPath]; exists {
+					delete(selectedFiles, fullPath)
+				} else {
+					selectedFiles[fullPath] = types.FileInfo{
+						Name: selected,
+						Size: fileInfo.Size(),
+						Path: fullPath,
+					}
+				}
+			}
+
 		case "cancel":
 			return nil, fmt.Errorf("file selection cancelled")
 
@@ -153,6 +183,7 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 
 		default:
 			fullPath := filepath.Join(currentDir, selected)
+
 			fileInfo, err := os.Stat(fullPath)
 			if err != nil {
 				fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to access %s: %v", fullPath, err)))
