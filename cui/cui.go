@@ -160,7 +160,7 @@ func (cui *ClientUI) selectFiles(dir string) ([]types.FileInfo, error) {
 					delete(selectedFiles, fullPath)
 				} else {
 					selectedFiles[fullPath] = types.FileInfo{
-						Name: selected,
+						Name: fileInfo.Name(),
 						Size: fileInfo.Size(),
 						Path: fullPath,
 					}

@@ -25,17 +25,12 @@ func (cui *ClientUI) chomp(ctx context.Context, dir string) {
 
 	onRequest := func(msg types.Message) (bool, error) {
 		str := "file"
-		if len(msg.Files) > 1 {
+		if msg.Len > 1 {
 			str += "s"
 		}
 
-		fmt.Println(styles.INFO.Render("files"))
-		for _, fileInfo := range msg.Files {
-			fmt.Println(styles.INFO.PaddingLeft(2).Render(fmt.Sprintf("%s (%d bytes)", fileInfo.Name, fileInfo.Size)))
-		}
-
 		return cui.showConfirm(
-			fmt.Sprintf("accept %d %s from %s?", len(msg.Files), str, msg.SenderName),
+			fmt.Sprintf("accept %d %s from %s?", msg.Len, str, msg.SenderName),
 			15*time.Second,
 		)
 	}

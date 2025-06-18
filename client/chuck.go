@@ -105,7 +105,7 @@ func (c *Client) sendTransferReq(peer types.Peer, files []types.FileInfo, transf
 		SenderID:   c.Self.ID,
 		SenderName: c.Self.Name,
 		IPAddress:  c.Self.IPAddress,
-		Files:      files,
+		Len:        len(files),
 		TransferID: transferID,
 	}
 

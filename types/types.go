@@ -23,12 +23,12 @@ const (
 )
 
 type Message struct {
-	Type       string     `json:"type"`
-	SenderID   string     `json:"sender_id"`
-	SenderName string     `json:"sender_name"`
-	IPAddress  string     `json:"ip_address"`
-	Files      []FileInfo `json:"files,omitempty"`
-	Accepted   bool       `json:"accepted,omitempty"`
-	Reason     string     `json:"reason,omitempty"`
-	TransferID string     `json:"transfer_id,omitempty"`
+	Type       string `json:"type"`
+	SenderID   string `json:"sender_id"`
+	SenderName string `json:"sender_name"`
+	IPAddress  string `json:"ip_address"`
+	Len        int    `json:"len,omitempty"`
+	Accepted   bool   `json:"accepted,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	TransferID string `json:"transfer_id,omitempty"`
 }
