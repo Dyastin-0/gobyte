@@ -2,10 +2,8 @@ package cui
 
 import (
 	"context"
-	"fmt"
 	"os"
 
-	"github.com/Dyastin-0/gobyte/styles"
 	"github.com/urfave/cli/v3"
 )
 
@@ -60,10 +58,8 @@ func (cui *ClientUI) NewCLI() *cli.Command {
 	}
 }
 
-func (cui *ClientUI) Run(ctx context.Context) {
+func (cui *ClientUI) Run(ctx context.Context) error {
 	cli := cui.NewCLI()
 
-	if err := cli.Run(ctx, os.Args); err != nil {
-		fmt.Println(styles.ERROR.Render(err.Error()))
-	}
+	return cli.Run(ctx, os.Args)
 }

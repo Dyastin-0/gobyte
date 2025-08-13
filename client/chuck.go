@@ -164,14 +164,34 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, p *pr
 		return fmt.Errorf("invalid message")
 	}
 
-	for _, fileInfo := range files {
-		if _, err := copyN(conn, fileInfo, peer, p); err != nil {
-			c.logger.Error(err.Error())
-			fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chuck %s: %v", fileInfo.Name, err)))
-		}
-	}
+	donech := make(chan bool, 1)
+	closedch := make(chan error, 1)
 
-	return nil
+	go func(conn net.Conn, files []types.FileInfo, peer types.Peer, p *progress.Progress) {
+		for _, fileInfo := range files {
+			if _, err := copyN(conn, fileInfo, peer, p); err != nil {
+				if err == io.EOF {
+					closedch <- err
+				}
+				c.logger.Error(err.Error())
+				fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chuck %s: %v", fileInfo.Name, err)))
+			}
+		}
+
+		donech <- true
+	}(conn, files, peer, p)
+
+	select {
+	case <-donech:
+		_, err := conn.Write([]byte("END\n"))
+		if err != nil {
+			return err
+		}
+		return nil
+
+	case err := <-closedch:
+		return err
+	}
 }
 
 func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, p *progress.Progress) (int64, error) {

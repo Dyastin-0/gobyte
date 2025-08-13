@@ -22,5 +22,8 @@ func main() {
 	client := client.New(ctx)
 
 	clientUI := cui.New(client)
-	clientUI.Run(ctx)
+	err := clientUI.Run(ctx)
+	if err != nil {
+		panic(err)
+	}
 }
