@@ -20,11 +20,20 @@ import (
 	"github.com/Dyastin-0/gobyte/types"
 )
 
-func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer func(string, string) bool, onRequest func(msg types.Message) (bool, error)) {
+func (c *Client) StartChompListener(
+	ctx context.Context,
+	dir string,
+	onNewPeer func(string, string) bool,
+	onRequest func(msg types.Message) (bool, error),
+) error {
 	go c.presenceBroadcaster(ctx)
 
 	addr := fmt.Sprintf(":%d", c.transferPort)
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		c.logger.Error(err.Error())
+		homeDir = "."
+	}
 	certDir := fmt.Sprintf("%s/gobyte/cert", homeDir)
 	trustDir := fmt.Sprintf("%s/gobyte/trust", homeDir)
 
@@ -32,71 +41,77 @@ func (c *Client) StartChompListener(ctx context.Context, dir string, onNewPeer f
 
 	tofu, err := tofu.New(tofuID, certDir, trustDir)
 	if err != nil {
-		fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to create tofu: %v", err)))
-		return
+		c.logger.Error(err.Error())
+		return err
 	}
 
 	tofu.OnNewPeer = onNewPeer
 
-	handler := func(listener net.Listener) {
+	handler := func(listener net.Listener) error {
 		for {
 			select {
 			case <-ctx.Done():
+				c.logger.Info(ctx.Err().Error())
 				listener.Close()
-				return
+				return ctx.Err()
 
 			case msg := <-c.transferReqChan:
-				fmt.Println(styles.TITLE.Render(fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress)))
+				fmt.Println(
+					styles.TITLE.Render(
+						fmt.Sprintf("chuck request from %s (%s)", msg.SenderName, msg.IPAddress),
+					),
+				)
 
-				err := func() error {
-					defer func() {
-						c.Busy = false
-					}()
-
-					confirm, err := onRequest(msg)
-					if err != nil {
-						fmt.Println(styles.ERROR.Render())
-						return fmt.Errorf("request from %s timed out", msg.SenderName)
-					}
-
-					err = c.sendAck(msg, "", confirm)
-					if err != nil {
-						return err
-					}
-
-					if !confirm {
-						return fmt.Errorf("request rejected")
-					}
-
-					conn, err := listener.Accept()
-					if err != nil {
-						return fmt.Errorf("failed to accept connection: %v", err)
-					}
-
-					conn = conn.(*tls.Conn)
-					conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
-
-					_, err = conn.Write([]byte("OK"))
-					if err != nil {
-						return err
-					}
-
-					if err := c.readFiles(conn, dir); err != nil {
-						return fmt.Errorf("failed to chomp: %v", err)
-					}
-
-					fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
-
-					return nil
+				defer func() {
+					c.Busy = false
 				}()
+
+				confirm, err := onRequest(msg)
 				if err != nil {
-					fmt.Println(styles.ERROR.Render(err.Error()))
+					fmt.Println(styles.ERROR.Render())
+					c.logger.Error(err.Error())
+					return fmt.Errorf("request from %s timed out", msg.SenderName)
 				}
+
+				err = c.sendAck(msg, "", confirm)
+				if err != nil {
+					c.logger.Error(err.Error())
+					return err
+				}
+
+				if !confirm {
+					c.logger.Info("request rejected")
+					return fmt.Errorf("request rejected")
+				}
+
+				conn, err := listener.Accept()
+				if err != nil {
+					c.logger.Error(err.Error())
+					return fmt.Errorf("failed to accept connection: %v", err)
+				}
+
+				conn = conn.(*tls.Conn)
+				conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
+
+				_, err = conn.Write([]byte("OK"))
+				if err != nil {
+					c.logger.Error(err.Error())
+					return err
+				}
+
+				if err := c.readFiles(conn, dir); err != nil {
+					c.logger.Error(err.Error())
+					return fmt.Errorf("failed to chomp: %v", err)
+				}
+
+				fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
+
+				return nil
 			}
 		}
 	}
 
-	tofu.Start(addr, handler)
+	return tofu.Start(addr, handler)
 }
 
 func (c *Client) sendAck(msg types.Message, reason string, confirm bool) error {

@@ -30,6 +30,7 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 
 			err := c.writeFiles(p, files, progress)
 			if err != nil {
+				c.logger.Error(err.Error())
 				sendErr = err
 				return
 			}
@@ -63,6 +64,7 @@ func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, p *progress
 
 	err := c.sendTransferReq(peer, files, transferID)
 	if err != nil {
+		c.logger.Error(err.Error())
 		return err
 	}
 
@@ -71,18 +73,19 @@ func (c *Client) writeFiles(peer types.Peer, files []types.FileInfo, p *progress
 	select {
 	case msg := <-ackChan:
 		if !msg.Accepted && msg.Reason != "" {
+			c.logger.Info("request failed")
 			return fmt.Errorf("%s (%s) is %s", msg.SenderName, msg.IPAddress, msg.Reason)
 		}
 
 		if !msg.Accepted {
+			c.logger.Info("request rejected")
 			return fmt.Errorf("%s rejected the request", peer.Name)
 		}
 
-		c.writeFilesToPeer(peer, files, p)
+		return c.writeFilesToPeer(peer, files, p)
 
-		return nil
-
-	case <-time.After(15 * time.Second):
+	case <-time.After(RequestTimeOutDuration):
+		c.logger.Info("request timed out")
 		return fmt.Errorf("request for %s timed out", peer.Name)
 	}
 }
@@ -125,7 +128,10 @@ func (c *Client) sendTransferReq(peer types.Peer, files []types.FileInfo, transf
 func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, p *progress.Progress) error {
 	addr := fmt.Sprintf("%s:%d", peer.IPAddress, c.transferPort)
 
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "."
+	}
 	certDir := fmt.Sprintf("%s/gobyte/cert", homeDir)
 	trustDir := fmt.Sprintf("%s/gobyte/trust", homeDir)
 

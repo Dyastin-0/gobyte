@@ -2,10 +2,13 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"os"
 	"sync"
+	"time"
 
+	"github.com/Dyastin-0/gobyte/logger"
 	"github.com/Dyastin-0/gobyte/types"
 	"github.com/Dyastin-0/gobyte/utils"
 	"github.com/google/uuid"
@@ -34,6 +37,8 @@ type Client struct {
 	maxBufferSize int64
 
 	writeFilesFunc
+
+	logger logger.Logger
 }
 
 func New(ctx context.Context) *Client {
@@ -48,6 +53,15 @@ func New(ctx context.Context) *Client {
 		IPAddress: utils.GetLocalIP(),
 	}
 
+	newLogger := logger.New()
+	basePath := time.Now().String()
+	path, err := logger.LogPath(basePath)
+	if err != nil {
+		path = fmt.Sprintf("./%s", basePath)
+	}
+
+	newLogger.Init(path)
+
 	client := &Client{
 		Self: self,
 
@@ -56,11 +70,13 @@ func New(ctx context.Context) *Client {
 		pendingTransfers: make(map[string]chan types.Message),
 		pendingPong:      make(map[string]chan bool),
 
-		discoveryPort: 8888,
-		transferPort:  8889,
-		broadcastAddr: "255.255.255.255",
-		discoveryMsg:  "GOBYTE",
-		maxBufferSize: 1024 * 1024,
+		discoveryPort: DiscoverPort,
+		transferPort:  TransferPort,
+		broadcastAddr: BroadcastAddr,
+		discoveryMsg:  DiscoveryMessage,
+		maxBufferSize: MaxBuffer,
+
+		logger: newLogger,
 	}
 
 	go client.listen(ctx)
