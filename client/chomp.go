@@ -163,31 +163,38 @@ func (c *Client) readFiles(conn net.Conn, dir string) error {
 		header, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
+				c.logger.Error(err.Error())
 				break
 			}
 
 			if err == tofu.ErrorConnectionDenied {
+				c.logger.Error(err.Error())
 				return err
 			}
 
 			fmt.Println(styles.ERROR.Render(fmt.Sprintf("error reading file header: %v", err)))
+
+			c.logger.Error(err.Error())
 			break
 		}
 
 		header = strings.TrimSpace(header)
 		if header == "END" {
+			c.logger.Error("END")
 			break
 		}
 
 		fileName, fileSize, err := readFileHeader(header)
 		if err != nil {
 			fmt.Println(styles.ERROR.Render(err.Error()))
+			c.logger.Error(err.Error())
 			continue
 		}
 
 		_, err = writeBytesToDir(reader, fileSize, dir, fileName)
 		if err != nil {
 			fmt.Println(styles.ERROR.Render(err.Error()))
+			c.logger.Error(err.Error())
 			continue
 		}
 	}

@@ -166,6 +166,7 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, p *pr
 
 	for _, fileInfo := range files {
 		if _, err := copyN(conn, fileInfo, peer, p); err != nil {
+			c.logger.Error(err.Error())
 			fmt.Println(styles.ERROR.Render(fmt.Sprintf("failed to chuck %s: %v", fileInfo.Name, err)))
 		}
 	}
