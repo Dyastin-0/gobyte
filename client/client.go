@@ -6,7 +6,6 @@ import (
 	"maps"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/Dyastin-0/gobyte/logger"
 	"github.com/Dyastin-0/gobyte/types"
@@ -54,10 +53,9 @@ func New(ctx context.Context) *Client {
 	}
 
 	newLogger := logger.New()
-	basePath := time.Now().String()
-	path, err := logger.LogPath(basePath)
+	path, err := logger.LogPath("logs")
 	if err != nil {
-		path = fmt.Sprintf("./%s", basePath)
+		path = fmt.Sprintf("./logs")
 	}
 
 	newLogger.Init(path)

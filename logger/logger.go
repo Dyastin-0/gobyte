@@ -138,12 +138,12 @@ func LogPath(path string) (string, error) {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	logDir := filepath.Join(homeDir, "gobyte-logs", path)
+	logDir := filepath.Join(homeDir, "gobyte", path)
 
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	logPath := filepath.Join(logDir, "wormhole.log")
+	logPath := filepath.Join(logDir, "gobyte.log")
 	return logPath, nil
 }
