@@ -7,9 +7,13 @@ import (
 )
 
 type (
-	ConnectionHandler func(net.Listener)
+	ConnectionHandler func(net.Listener) error
 	NewPeerHandler    func(string, string) bool
 )
+
+var UnsafeNewPeerHandler = func(peerID string, fingerprint string) bool {
+	return true
+}
 
 type Tofu struct {
 	ID           string
@@ -21,6 +25,7 @@ type Tofu struct {
 	OnNewPeer    NewPeerHandler
 }
 
+// New uses the UnsafeNewPeerHandler by default
 func New(id, certPath, trustPath string) (*Tofu, error) {
 	if certPath == "" || trustPath == "" {
 		return nil, ErrorMustSpecifyCertPaths
@@ -37,9 +42,7 @@ func New(id, certPath, trustPath string) (*Tofu, error) {
 		ID:        id,
 		CertPath:  certPath,
 		TrustPath: trustPath,
-		OnNewPeer: func(peerID string, fingerprint string) bool {
-			return true
-		},
+		OnNewPeer: UnsafeNewPeerHandler,
 	}
 
 	cert, err := tofu.loadOrGenerateCert()
@@ -51,17 +54,15 @@ func New(id, certPath, trustPath string) (*Tofu, error) {
 	return tofu, nil
 }
 
-func (m *Tofu) Start(address string, handler ConnectionHandler) error {
-	m.ServerConfig = m.newServerConfig()
+func (t *Tofu) Start(address string, handler ConnectionHandler) error {
+	t.ServerConfig = t.newServerConfig()
 
-	listener, err := tls.Listen("tcp", address, m.ServerConfig)
+	listener, err := tls.Listen("tcp", address, t.ServerConfig)
 	if err != nil {
 		return err
 	}
 
-	handler(listener)
-
-	return nil
+	return handler(listener)
 }
 
 func (m *Tofu) Connect(address string) (*tls.Conn, error) {
