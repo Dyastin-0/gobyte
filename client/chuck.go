@@ -32,7 +32,6 @@ func (c *Client) ChuckFilesToPeers(peers []types.Peer, files []types.FileInfo) e
 			if err != nil {
 				c.logger.Error(err.Error())
 				sendErr = err
-				return
 			}
 		}(peer)
 	}
@@ -194,7 +193,12 @@ func (c *Client) writeFilesToPeer(peer types.Peer, files []types.FileInfo, p *pr
 	}
 }
 
-func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, p *progress.Progress) (int64, error) {
+func copyN(
+	conn io.Writer,
+	fileInfo types.FileInfo,
+	peer types.Peer,
+	p *progress.Progress,
+) (int64, error) {
 	file, err := os.Open(fileInfo.Path)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %v", err)
@@ -206,9 +210,20 @@ func copyN(conn io.Writer, fileInfo types.FileInfo, peer types.Peer, p *progress
 		return 0, fmt.Errorf("failed to write header: %v", err)
 	}
 
-	bar := p.NewBar(fileInfo.Size, fmt.Sprintf("%s (%s) -> chucking %s...", peer.Name, peer.IPAddress, fileInfo.Name))
+	bar := p.NewBar(
+		fileInfo.Size,
+		fmt.Sprintf(
+			"%s (%s) -> chucking %s...",
+			peer.Name,
+			peer.IPAddress,
+			fileInfo.Name,
+		),
+	)
 
-	sentBytes, err := p.Execute(conn, file, fileInfo.Size, bar)
+	proxyReader := bar.ProxyReader(file)
+	defer proxyReader.Close()
+
+	sentBytes, err := io.CopyN(conn, proxyReader, fileInfo.Size)
 	if err != nil {
 		return 0, fmt.Errorf("error sending file data: %v", err)
 	}

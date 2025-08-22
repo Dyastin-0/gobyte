@@ -62,10 +62,6 @@ func (c *Client) StartChompListener(
 					),
 				)
 
-				defer func() {
-					c.Busy = false
-				}()
-
 				confirm, err := onRequest(msg)
 				if err != nil {
 					fmt.Println(styles.ERROR.Render())
@@ -105,8 +101,7 @@ func (c *Client) StartChompListener(
 				}
 
 				fmt.Println(styles.SUCCESS.Bold(true).Render("all files chomped ✓"))
-
-				return nil
+				c.Busy = false
 			}
 		}
 	}
@@ -226,7 +221,10 @@ func writeBytesToDir(reader io.Reader, fileSize int64, dir, fileName string) (in
 
 	bar := p.NewBar(fileSize, fmt.Sprintf("chomping %s...", fileName))
 
-	copiedBytes, err := p.Execute(file, reader, fileSize, bar)
+	proxyReader := bar.ProxyReader(reader)
+	defer proxyReader.Close()
+
+	copiedBytes, err := io.CopyN(file, proxyReader, fileSize)
 	if err != nil {
 		return 0, fmt.Errorf("failed to copy %s: %v", file.Name(), err)
 	}
