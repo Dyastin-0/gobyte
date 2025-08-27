@@ -14,7 +14,8 @@ import (
 	"time"
 )
 
-func (t *Tofu) loadOrGenerateCert() (tls.Certificate, error) {
+// returns a new self signed certificate if nothing is found at path
+func (t *Tofu) cert() (*tls.Certificate, error) {
 	certFile := filepath.Join(t.CertPath, t.ID+".crt")
 	keyFile := filepath.Join(t.CertPath, t.ID+".key")
 
@@ -22,24 +23,24 @@ func (t *Tofu) loadOrGenerateCert() (tls.Certificate, error) {
 		if _, err := os.Stat(keyFile); err == nil {
 			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 			if err != nil {
-				return tls.Certificate{}, err
+				return nil, err
 			}
-			return cert, nil
+			return &cert, nil
 		}
 	}
 
-	return t.generateSelfSignedCert()
+	return t.newSelfSignedCert()
 }
 
-func (t *Tofu) generateSelfSignedCert() (tls.Certificate, error) {
+func (t *Tofu) newSelfSignedCert() (*tls.Certificate, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	template := x509.Certificate{
@@ -56,14 +57,14 @@ func (t *Tofu) generateSelfSignedCert() (tls.Certificate, error) {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 
 	privDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
@@ -72,17 +73,17 @@ func (t *Tofu) generateSelfSignedCert() (tls.Certificate, error) {
 	keyFile := filepath.Join(t.CertPath, t.ID+".key")
 
 	if err = os.WriteFile(certFile, certPEM, 0600); err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	if err = os.WriteFile(keyFile, keyPEM, 0600); err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
 	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, err
 	}
 
-	return cert, nil
+	return &cert, nil
 }

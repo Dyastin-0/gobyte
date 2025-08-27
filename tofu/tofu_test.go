@@ -23,7 +23,7 @@ func TestGenerateSelfSignedCert(t *testing.T) {
 		ID:       "testnode",
 	}
 
-	cert, err := tofu.generateSelfSignedCert()
+	cert, err := tofu.newSelfSignedCert()
 	if err != nil {
 		t.Fatalf("failed to generate self-signed cert: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestLoadOrGenerateCert(t *testing.T) {
 		ID:       "node123",
 	}
 
-	cert, err := tofu.loadOrGenerateCert()
+	cert, err := tofu.cert()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestLoadOrGenerateCert(t *testing.T) {
 		t.Error("expected a certificate to be generated")
 	}
 
-	loadedCert, err := tofu.loadOrGenerateCert()
+	loadedCert, err := tofu.cert()
 	if err != nil {
 		t.Fatalf("failed to load existing cert: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestSaveAndCheckPeerFingerprint(t *testing.T) {
 	cert := []byte("dummy certificate data")
 	otherCert := []byte("different cert data")
 
-	ok, err := tofu.checkPeerFingerprint(peerID, cert)
+	ok, err := tofu.known(peerID, cert)
 	if err != nil {
 		t.Fatalf("unexpected error checking nonexistent fingerprint: %v", err)
 	}
@@ -97,11 +97,11 @@ func TestSaveAndCheckPeerFingerprint(t *testing.T) {
 		t.Error("expected fingerprint check to fail for non-existent fingerprint")
 	}
 
-	if err = tofu.savePeerFingerprint(peerID, cert); err != nil {
+	if err = tofu.trust(peerID, cert); err != nil {
 		t.Fatalf("failed to save fingerprint: %v", err)
 	}
 
-	ok, err = tofu.checkPeerFingerprint(peerID, cert)
+	ok, err = tofu.known(peerID, cert)
 	if err != nil {
 		t.Fatalf("unexpected error during fingerprint check: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestSaveAndCheckPeerFingerprint(t *testing.T) {
 		t.Error("expected fingerprint check to pass for matching fingerprint")
 	}
 
-	ok, err = tofu.checkPeerFingerprint(peerID, otherCert)
+	ok, err = tofu.known(peerID, otherCert)
 	if err != nil {
 		t.Fatalf("unexpected error during fingerprint check: %v", err)
 	}
@@ -117,7 +117,8 @@ func TestSaveAndCheckPeerFingerprint(t *testing.T) {
 		t.Error("expected fingerprint check to fail for mismatched fingerprint")
 	}
 
-	expected := sha256.Sum256(cert)
+	sum := sha256.Sum256(cert)
+	expected := []byte(tofu.format("sha256", sum[:]))
 	path := filepath.Join(tmpDir, peerID)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -165,13 +166,13 @@ func TestVerifyPeer(t *testing.T) {
 	peerID := "peerABC"
 	tofu := &Tofu{
 		TrustPath: tmp,
-		OnNewPeer: func(id string, fingerprint []byte) bool {
+		OnNewPeer: func(id, fingerprint string) bool {
 			return id == peerID
 		},
 	}
 
 	t.Run("no cert provided", func(t *testing.T) {
-		err := tofu.verifyPeer(tls.ConnectionState{})
+		err := tofu.verify(tls.ConnectionState{})
 		if err != ErrorNoCertificateProvided {
 			t.Errorf("expected ErrorNoCertificateProvided, got: %v", err)
 		}
@@ -184,19 +185,19 @@ func TestVerifyPeer(t *testing.T) {
 			PeerCertificates: []*x509.Certificate{cert},
 		}
 
-		err := tofu.verifyPeer(state)
+		err := tofu.verify(state)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 
-		err = tofu.verifyPeer(state)
+		err = tofu.verify(state)
 		if err != nil {
 			t.Fatalf("expected known cert to be accepted, got: %v", err)
 		}
 	})
 
 	t.Run("unknown cert, rejected by OnNewPeer", func(t *testing.T) {
-		tofu.OnNewPeer = func(id string, fingerprint []byte) bool {
+		tofu.OnNewPeer = func(peerID string, fingerprint string) bool {
 			return false
 		}
 		cert := createTestCert(t, "rejected-peer")
@@ -204,7 +205,7 @@ func TestVerifyPeer(t *testing.T) {
 			PeerCertificates: []*x509.Certificate{cert},
 		}
 
-		err := tofu.verifyPeer(state)
+		err := tofu.verify(state)
 		if err != ErrorConnectionDenied {
 			t.Errorf("expected ErrorConnectionDenied, got: %v", err)
 		}

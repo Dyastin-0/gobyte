@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 )
 
-func (t *Tofu) verifyPeer(cs tls.ConnectionState) error {
+func (t *Tofu) verify(cs tls.ConnectionState) error {
 	if len(cs.PeerCertificates) == 0 {
 		return ErrorNoCertificateProvided
 	}
@@ -15,19 +15,19 @@ func (t *Tofu) verifyPeer(cs tls.ConnectionState) error {
 	peerID := cert.Subject.CommonName
 	fingerprint, _ := x509.MarshalPKIXPublicKey(cert.Raw)
 
-	known, err := t.checkPeerFingerprint(peerID, fingerprint)
+	known, err := t.known(peerID, fingerprint)
 	if err != nil {
 		return err
 	}
 
 	sha256Fingerprint := sha256.Sum256(fingerprint)
-	prefixedFingerprint := t.prefixFingerprint(sha256Fingerprint[:])
+	prefixedFingerprint := t.format("sha256", sha256Fingerprint[:])
 
 	if !known {
 		if !t.OnNewPeer(peerID, prefixedFingerprint) {
 			return ErrorConnectionDenied
 		}
-		err = t.savePeerFingerprint(peerID, fingerprint)
+		err = t.trust(peerID, fingerprint)
 		if err != nil {
 			return err
 		}
