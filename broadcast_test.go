@@ -13,7 +13,7 @@ import (
 func TestBroadcastServer(t *testing.T) {
 	b := NewBroadcaster(":8080", ":42069")
 	ctx, cancel := context.WithCancel(context.Background())
-	go b.Listen(ctx)
+	go b.Start(ctx)
 
 	time.Sleep(time.Millisecond * 50)
 
@@ -83,7 +83,7 @@ func TestBroadcastServer(t *testing.T) {
 func TestPeerDelete(t *testing.T) {
 	b := NewBroadcaster(":8080", ":42069")
 	ctx, cancel := context.WithCancel(context.Background())
-	go b.Listen(ctx)
+	go b.Start(ctx)
 
 	time.Sleep(time.Millisecond * 50)
 
@@ -129,7 +129,7 @@ func TestPeerDelete(t *testing.T) {
 func TestMalformedBroadcastMessage(t *testing.T) {
 	b := NewBroadcaster(":8080", ":42069")
 	ctx, cancel := context.WithCancel(context.Background())
-	go b.Listen(ctx)
+	go b.Start(ctx)
 
 	time.Sleep(time.Millisecond * 50)
 

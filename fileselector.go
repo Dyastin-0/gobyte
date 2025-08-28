@@ -1,6 +1,7 @@
 package gobyte
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,15 +20,18 @@ var (
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	dirStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	pageStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+	ErrCanceled = errors.New("canceled")
 )
 
 type FileSelector struct {
-	selected string
-	dir      string
-	rootDir  string
-	Selected map[string]*FileHeader
-	filter   string
-	page     int
+	selected       string
+	dir            string
+	rootDir        string
+	Selected       map[string]*FileHeader
+	nBytesSelected int64
+	filter         string
+	page           int
 }
 
 func NewFileSelector(dir string) *FileSelector {
@@ -152,7 +156,7 @@ func (f *FileSelector) RunRecur() error {
 
 	switch f.selected {
 	case "cancel":
-		return nil
+		return ErrCanceled
 	case "done":
 		return nil
 	case "filter":
@@ -230,11 +234,13 @@ func (f *FileSelector) Selection() error {
 
 func (f *FileSelector) Select(fullPath, path string, stat os.FileInfo) {
 	if _, ok := f.Selected[fullPath]; ok {
+		f.nBytesSelected -= stat.Size()
 		delete(f.Selected, fullPath)
 	} else {
 		path = strings.TrimPrefix(path, f.dir)
 		path = strings.TrimPrefix(path, string(filepath.Separator))
-		f.Selected[fullPath] = &FileHeader{name: stat.Name(), size: stat.Size(), path: path}
+		f.nBytesSelected += stat.Size()
+		f.Selected[fullPath] = &FileHeader{name: stat.Name(), size: stat.Size(), abspath: fullPath, path: path}
 	}
 }
 

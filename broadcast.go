@@ -74,7 +74,7 @@ type BroadcastMessage struct {
 
 type peer struct {
 	name      string
-	data      any
+	data      string
 	addr      *net.UDPAddr
 	lastHello time.Time
 }
@@ -154,7 +154,7 @@ func (b *Broadcaster) write(out *out) (n int, err error) {
 	return
 }
 
-func (b *Broadcaster) Listen(ctx context.Context) error {
+func (b *Broadcaster) Start(ctx context.Context) error {
 	addr, err := net.ResolveUDPAddr("udp", b.addr)
 	if err != nil {
 		return err

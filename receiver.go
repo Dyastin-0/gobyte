@@ -9,19 +9,15 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-
-	"github.com/vbauerster/mpb/v8"
 )
 
 type Receiver struct {
 	dir string
-	p   *mpb.Progress
 }
 
 func NewReceiver(dir string) *Receiver {
 	return &Receiver{
 		dir: dir,
-		p:   mpb.New(),
 	}
 }
 
@@ -113,12 +109,8 @@ func (r *Receiver) Write(rd io.Reader, h *FileHeader) (int64, error) {
 	}
 	defer file.Close()
 
-	bar := DefaultBar(h.size, h.name, r.p)
-	proxy := bar.ProxyReader(rd)
-
-	n, err := io.CopyN(file, proxy, h.size)
-
-	bar.Wait()
+	n, err := io.CopyN(file, rd, h.size)
+	log.Printf("wrote: %s (%d)\n", h.name, h.size)
 
 	return n, err
 }

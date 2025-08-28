@@ -6,14 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
-
-	"github.com/vbauerster/mpb/v8"
 )
 
-type Sender struct {
-	fileselector *FileSelector
-	progress     *mpb.Progress
-}
+type Sender struct{}
 
 type summary struct {
 	nBytes int64
@@ -23,14 +18,11 @@ type summary struct {
 	failedFiles  []*FileHeader
 }
 
-func NewSender(dir string) *Sender {
-	return &Sender{
-		fileselector: NewFileSelector(dir),
-		progress:     mpb.New(),
-	}
+func NewSender() *Sender {
+	return &Sender{}
 }
 
-func (s *Sender) Send(conn io.Writer, files []*FileHeader) (*summary, error) {
+func (s *Sender) Send(conn io.Writer, files map[string]*FileHeader) (*summary, error) {
 	summ := &summary{
 		files:       make([]*FileHeader, 0),
 		failedFiles: make([]*FileHeader, 0),
@@ -96,11 +88,7 @@ func (s *Sender) WriteHeader(conn io.Writer, f *FileHeader) (int64, error) {
 }
 
 func (s *Sender) WriteFile(conn io.Writer, file io.Reader, h *FileHeader) (int64, error) {
-	text := fmt.Sprintf("Sending %s...", h.name)
-	bar := DefaultBar(h.size, text, s.progress)
-	proxy := bar.ProxyReader(file)
-
-	n, err := io.CopyN(conn, proxy, h.size)
-	bar.Wait()
+	n, err := io.CopyN(conn, file, h.size)
+	log.Printf("wrote: %s (%d)\n", h.name, h.size)
 	return n, err
 }

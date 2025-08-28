@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -38,9 +37,10 @@ type (
 )
 
 type FileHeader struct {
-	name string
-	path string
-	size int64
+	name    string
+	path    string
+	abspath string
+	size    int64
 }
 
 type EndHeader struct {
@@ -91,11 +91,13 @@ func (e *EncodedHeader) Parse() (Header, error) {
 		return nil, ErrMalformedFileHeader
 	}
 
-	size, err := strconv.ParseInt(parts[1], 10, 64)
+	size := parts[1]
+	size = strings.TrimSpace(size)
+	parsedSize, err := strconv.ParseInt(size, 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	if size < 0 {
+	if parsedSize < 0 {
 		return nil, ErrMalformedFileHeader
 	}
 
@@ -112,13 +114,12 @@ func (e *EncodedHeader) Parse() (Header, error) {
 	return &FileHeader{
 		name: name,
 		path: path,
-		size: size,
+		size: parsedSize,
 	}, nil
 }
 
 func (h *FileHeader) Open() (*os.File, error) {
-	path := filepath.Join(h.path, h.name)
-	file, err := os.Open(path)
+	file, err := os.Open(h.abspath)
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +143,17 @@ func (h *FileHeader) Encoded() (Encoded, error) {
 		return nil, ErrMalformedFileHeader
 	}
 
-	str := []string{strconv.FormatInt(h.size, 10), h.name, h.path}
-	hd := strings.Join(str, string(headerDelim))
-	hd = fmt.Sprintf("%s%s%s%s", string(headerDelim), hd, string(headerDelim), string(delim))
+	hd := fmt.Sprintf(
+		"%s%d%s%s%s%s%s%s",
+		string(headerDelim),
+		h.size,
+		string(headerDelim),
+		h.name,
+		string(headerDelim),
+		h.path,
+		string(headerDelim),
+		string(delim),
+	)
 
 	encoded := EncodedHeader(hd)
 	return &encoded, nil

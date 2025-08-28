@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net"
 	"os"
+	"path/filepath"
 )
 
 type (
@@ -25,31 +26,37 @@ type Tofu struct {
 	OnNewPeer    NewPeerHandler
 }
 
-func New(id, certPath, trustPath string) (*Tofu, error) {
-	if certPath == "" || trustPath == "" {
-		return nil, ErrorMustSpecifyCertPaths
-	}
+func New(id string) *Tofu {
+	return &Tofu{ID: id}
+}
 
-	if err := os.MkdirAll(certPath, 0700); err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(trustPath, 0700); err != nil {
-		return nil, err
-	}
-
-	tofu := &Tofu{
-		ID:        id,
-		CertPath:  certPath,
-		TrustPath: trustPath,
-	}
-
-	cert, err := tofu.cert()
+func (t *Tofu) Init() error {
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	tofu.Certificate = cert
 
-	return tofu, nil
+	certPath := filepath.Join(homeDir, "gobyte", "cert")
+	if err := os.MkdirAll(certPath, 0700); err != nil {
+		return err
+	}
+
+	t.CertPath = certPath
+
+	trustPath := filepath.Join(homeDir, "gobyte", "trust")
+	if err := os.MkdirAll(trustPath, 0700); err != nil {
+		return err
+	}
+
+	t.TrustPath = trustPath
+
+	cert, err := t.cert()
+	if err != nil {
+		return err
+	}
+	t.Certificate = cert
+
+	return nil
 }
 
 func (t *Tofu) Listen(address string) (net.Listener, error) {
