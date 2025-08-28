@@ -18,7 +18,7 @@ const (
 var (
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	dirStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	pageStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+	pageStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )
 
 type FileSelector struct {
@@ -81,9 +81,6 @@ func (f *FileSelector) RunRecur() error {
 		totalPages = 1
 	}
 
-	if f.page >= totalPages {
-		f.page = totalPages - 1
-	}
 	if f.page < 0 {
 		f.page = 0
 	}
@@ -99,19 +96,19 @@ func (f *FileSelector) RunRecur() error {
 		filterText = fmt.Sprintf("Filter: '%s'", f.filter)
 	}
 
+	options = append(options, huh.NewOption(filterText, "filter"))
+
 	if totalPages > 1 {
 		pageInfo := fmt.Sprintf("Page %d of %d (%d items)", f.page+1, totalPages, totalItems)
 		options = append(options, huh.NewOption(pageStyle.Render(pageInfo), "page_info"))
 
 		if f.page > 0 {
-			options = append(options, huh.NewOption("Prev", "prev_page"))
+			options = append(options, huh.NewOption("<-", "prev_page"))
 		}
 		if f.page < totalPages-1 {
-			options = append(options, huh.NewOption("Next", "next_page"))
+			options = append(options, huh.NewOption("->", "next_page"))
 		}
 	}
-
-	options = append(options, huh.NewOption(filterText, "filter"))
 
 	start := f.page * PAGE_SIZE
 	end := min(start+PAGE_SIZE, len(entries))
@@ -159,7 +156,7 @@ func (f *FileSelector) RunRecur() error {
 	case "done":
 		return nil
 	case "filter":
-		return f.handleFilter()
+		return f.Filter()
 	case "prev_page":
 		f.page--
 		return f.RunRecur()
@@ -169,7 +166,7 @@ func (f *FileSelector) RunRecur() error {
 	case "page_info":
 		return f.RunRecur()
 	default:
-		err := f.handleSelection()
+		err := f.Selection()
 		if err != nil {
 			return err
 		}
@@ -177,7 +174,7 @@ func (f *FileSelector) RunRecur() error {
 	}
 }
 
-func (f *FileSelector) handleFilter() error {
+func (f *FileSelector) Filter() error {
 	var newFilter string
 
 	form := huh.NewInput().
@@ -195,7 +192,7 @@ func (f *FileSelector) handleFilter() error {
 	return f.RunRecur()
 }
 
-func (f *FileSelector) handleSelection() error {
+func (f *FileSelector) Selection() error {
 	stat, err := os.Stat(f.selected)
 	if err != nil {
 		return f.RunRecur()
@@ -231,11 +228,12 @@ func (f *FileSelector) handleSelection() error {
 	return nil
 }
 
-// TODO: We should not send a file with it's absolute path
 func (f *FileSelector) Select(fullPath, path string, stat os.FileInfo) {
 	if _, ok := f.Selected[fullPath]; ok {
 		delete(f.Selected, fullPath)
 	} else {
+		path = strings.TrimPrefix(path, f.dir)
+		path = strings.TrimPrefix(path, string(filepath.Separator))
 		f.Selected[fullPath] = &file{name: stat.Name(), size: stat.Size(), path: path}
 	}
 }
