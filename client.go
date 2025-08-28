@@ -258,7 +258,7 @@ func (c *Client) StartSender(ctx context.Context) error {
 				}
 
 				r := &RequestHeader{
-					n:      len(c.fileselector.selected),
+					n:      len(c.fileselector.Selected),
 					nbytes: c.fileselector.nBytesSelected,
 				}
 
