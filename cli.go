@@ -1,0 +1,4 @@
+package gobyte
+
+func main() {
+}

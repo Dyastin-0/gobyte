@@ -133,6 +133,8 @@ func TestReceiveRecoverCorrupt(t *testing.T) {
 func TestDefaultWriteFunc(t *testing.T) {
 	tempDir := t.TempDir()
 
+	r := NewReceiver(tempDir)
+
 	h := &FileHeader{
 		path: "docs",
 		name: "readme.txt",
@@ -140,7 +142,7 @@ func TestDefaultWriteFunc(t *testing.T) {
 	}
 
 	rd := strings.NewReader("readme")
-	n, err := DefaultWriteFunc(rd, h, tempDir)
+	n, err := r.Write(rd, h)
 	if err != nil {
 		t.Error(err)
 	}
@@ -154,7 +156,7 @@ func TestDefaultWriteFunc(t *testing.T) {
 	}
 
 	rd = strings.NewReader("readme")
-	n, err = DefaultWriteFunc(rd, h, tempDir)
+	n, err = r.Write(rd, h)
 	if err != nil {
 		t.Error(err)
 	}

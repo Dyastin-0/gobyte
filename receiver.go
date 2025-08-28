@@ -9,19 +9,19 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+
+	"github.com/vbauerster/mpb/v8"
 )
 
-type WriteFunc func(io.Reader, *FileHeader, string) (int64, error)
-
 type Receiver struct {
-	dir   string
-	Write WriteFunc
+	dir string
+	p   *mpb.Progress
 }
 
 func NewReceiver(dir string) *Receiver {
 	return &Receiver{
-		dir:   dir,
-		Write: DefaultWriteFunc,
+		dir: dir,
+		p:   mpb.New(),
 	}
 }
 
@@ -79,15 +79,15 @@ func (r *Receiver) receive(rd io.Reader) error {
 			continue
 		}
 
-		_, err = r.Write(reader, parsedHeader, r.dir)
+		_, err = r.Write(reader, parsedHeader)
 		if err != nil {
 			return nil
 		}
 	}
 }
 
-func DefaultWriteFunc(rd io.Reader, h *FileHeader, dir string) (int64, error) {
-	path := filepath.Join(dir, h.path)
+func (r *Receiver) Write(rd io.Reader, h *FileHeader) (int64, error) {
+	path := filepath.Join(r.dir, h.path)
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return 0, err
 	}
@@ -113,7 +113,14 @@ func DefaultWriteFunc(rd io.Reader, h *FileHeader, dir string) (int64, error) {
 	}
 	defer file.Close()
 
-	return io.CopyN(file, rd, h.size)
+	bar := DefaultBar(h.size, h.name, r.p)
+	proxy := bar.ProxyReader(rd)
+
+	n, err := io.CopyN(file, proxy, h.size)
+
+	bar.Wait()
+
+	return n, err
 }
 
 func countSameFileNamePrefix(dir, prefix, ext string) (int, error) {

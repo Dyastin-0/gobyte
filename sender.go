@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+
+	"github.com/vbauerster/mpb/v8"
 )
 
 type Sender struct {
 	fileselector *FileSelector
+	progress     *mpb.Progress
 }
 
 type summary struct {
@@ -23,6 +26,7 @@ type summary struct {
 func NewSender(dir string) *Sender {
 	return &Sender{
 		fileselector: NewFileSelector(dir),
+		progress:     mpb.New(),
 	}
 }
 
@@ -92,5 +96,11 @@ func (s *Sender) WriteHeader(conn io.Writer, f *FileHeader) (int64, error) {
 }
 
 func (s *Sender) WriteFile(conn io.Writer, file io.Reader, h *FileHeader) (int64, error) {
-	return io.CopyN(conn, file, h.size)
+	text := fmt.Sprintf("Sending %s...", h.name)
+	bar := DefaultBar(h.size, text, s.progress)
+	proxy := bar.ProxyReader(file)
+
+	n, err := io.CopyN(conn, proxy, h.size)
+	bar.Wait()
+	return n, err
 }
