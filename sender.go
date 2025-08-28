@@ -7,31 +7,31 @@ import (
 	"path/filepath"
 )
 
-type Sender struct{}
+type Sender struct {
+	fileselector *FileSelector
+}
 
 type summary struct {
 	nBytes int64
-	files  []*file
+	files  []*FileHeader
 
 	nFailedBytes int64
-	failedFiles  []*file
+	failedFiles  []*FileHeader
 }
 
-func NewSender() *Sender {
-	return &Sender{}
+func NewSender(dir string) *Sender {
+	return &Sender{
+		fileselector: NewFileSelector(dir),
+	}
 }
 
-func (s *Sender) Request(conn net.Conn, n int) error {
-	return nil
-}
-
-func (s *Sender) Send(conn net.Conn, files []*file) (*summary, error) {
+func (s *Sender) Send(conn net.Conn, files []*FileHeader) (*summary, error) {
 	summ := &summary{}
 
 	return summ, nil
 }
 
-func (s *Sender) Open(f *file) (io.Reader, error) {
+func (s *Sender) Open(f *FileHeader) (io.Reader, error) {
 	path := filepath.Join(f.path, f.name)
 	file, err := os.Open(path)
 	if err != nil {
@@ -40,7 +40,7 @@ func (s *Sender) Open(f *file) (io.Reader, error) {
 	return file, nil
 }
 
-func (s *Sender) WriteHeader(conn net.Conn, h EncodedHeader) error {
+func (s *Sender) WriteHeader(conn net.Conn, f *FileHeader) error {
 	return nil
 }
 

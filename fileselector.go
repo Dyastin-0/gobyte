@@ -25,7 +25,7 @@ type FileSelector struct {
 	selected string
 	dir      string
 	rootDir  string
-	Selected map[string]*file
+	Selected map[string]*FileHeader
 	filter   string
 	page     int
 }
@@ -37,12 +37,12 @@ func NewFileSelector(dir string) *FileSelector {
 	}
 	return &FileSelector{
 		dir:      abs,
-		Selected: map[string]*file{},
+		Selected: make(map[string]*FileHeader),
 		page:     0,
 	}
 }
 
-func (f *FileSelector) getFilteredEntries() ([]os.DirEntry, error) {
+func (f *FileSelector) filteredEntries() ([]os.DirEntry, error) {
 	entries, err := os.ReadDir(f.dir)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (f *FileSelector) getFilteredEntries() ([]os.DirEntry, error) {
 }
 
 func (f *FileSelector) RunRecur() error {
-	entries, err := f.getFilteredEntries()
+	entries, err := f.filteredEntries()
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (f *FileSelector) Select(fullPath, path string, stat os.FileInfo) {
 	} else {
 		path = strings.TrimPrefix(path, f.dir)
 		path = strings.TrimPrefix(path, string(filepath.Separator))
-		f.Selected[fullPath] = &file{name: stat.Name(), size: stat.Size(), path: path}
+		f.Selected[fullPath] = &FileHeader{name: stat.Name(), size: stat.Size(), path: path}
 	}
 }
 
@@ -272,5 +272,5 @@ func (f *FileSelector) GetSelectedPaths() []string {
 }
 
 func (f *FileSelector) ClearSelection() {
-	f.Selected = make(map[string]*file)
+	f.Selected = make(map[string]*FileHeader)
 }
