@@ -4,6 +4,8 @@ package gobyte
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -112,6 +114,15 @@ func (e *EncodedHeader) Parse() (Header, error) {
 		path: path,
 		size: size,
 	}, nil
+}
+
+func (h *FileHeader) Open() (*os.File, error) {
+	path := filepath.Join(h.path, h.name)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 
 // Encoded creates 0x1Fsize0x1Fname0x1Fpath0x1F0x1D
