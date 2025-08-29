@@ -2,6 +2,10 @@
 
 `gobyte` is a command-line tool that enables fast and secure file transfers between devices on the same local network. It uses a custom file transfer protocol over TLS-encrypted TCP connections with a trust-on-first-use (TOFU) security mechanism.
 
+## In Action
+
+![demo](demo.gif)
+
 ## How It Works
 
 ### Connection
