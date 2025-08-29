@@ -156,7 +156,11 @@ func (f *FileSelector) RunRecur() error {
 	case "done":
 		return nil
 	case "filter":
-		return f.Filter()
+		err := f.Filter()
+		if err != nil {
+			return err
+		}
+		return f.RunRecur()
 	case "prev_page":
 		f.page--
 		return f.RunRecur()
@@ -184,12 +188,12 @@ func (f *FileSelector) Filter() error {
 
 	err := form.Run()
 	if err != nil {
-		return f.RunRecur()
+		return err
 	}
 
 	f.filter = strings.TrimSpace(newFilter)
 	f.page = 0
-	return f.RunRecur()
+	return err
 }
 
 func (f *FileSelector) Selection() error {
@@ -229,6 +233,10 @@ func (f *FileSelector) Selection() error {
 }
 
 func (f *FileSelector) Select(fullPath, path string, stat os.FileInfo) {
+	if path == f.dir {
+		path = "."
+	}
+
 	if _, ok := f.Selected[fullPath]; ok {
 		f.nBytesSelected -= stat.Size()
 		delete(f.Selected, fullPath)

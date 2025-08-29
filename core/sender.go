@@ -33,7 +33,7 @@ func (s *Sender) Send(conn io.Writer, files map[string]*FileHeader) (*summary, e
 		if err != nil {
 			summ.failedFiles = append(summ.failedFiles, file)
 			summ.nFailedBytes += file.size
-			return summ, err
+			continue
 		}
 
 		f, err := file.Open()
