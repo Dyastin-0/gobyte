@@ -261,16 +261,13 @@ func (b *Broadcaster) listenBytes(ctx context.Context) error {
 					b.peers[hn].lastHello = time.Now()
 				}
 				b.mu.Unlock()
-
-				// Immediately send a hello back, faster discovery
-				go b.write(&out{bytes: EncodedHelloBroadcastMessage(b.message), addr: in.addr})
 			}
 		}
 	}
 }
 
 func (b *Broadcaster) b(ctx context.Context) error {
-	ticker := time.NewTicker(time.Second * 15)
+	ticker := time.NewTicker(HelloInterval)
 	_, port, err := net.SplitHostPort(b.addr)
 	if err != nil {
 		return err
@@ -304,7 +301,7 @@ func (b *Broadcaster) helloer(ctx context.Context) error {
 			for _, peer := range b.peers {
 				elapsed := time.Since(peer.lastHello)
 
-				if elapsed > HelloInterval+3*time.Second {
+				if elapsed > HelloInterval+2*time.Second {
 					delete(b.peers, peer.name)
 					continue
 				}

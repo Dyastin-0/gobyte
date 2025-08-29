@@ -12,10 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const (
-	PAGE_SIZE = 25
-)
-
 var (
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	dirStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
@@ -80,7 +76,7 @@ func (f *FileSelector) RunRecur() error {
 	}
 
 	totalItems := len(entries)
-	totalPages := (totalItems + PAGE_SIZE - 1) / PAGE_SIZE
+	totalPages := (totalItems + PAGESIZE - 1) / PAGESIZE
 	if totalPages == 0 {
 		totalPages = 1
 	}
@@ -114,8 +110,8 @@ func (f *FileSelector) RunRecur() error {
 		}
 	}
 
-	start := f.page * PAGE_SIZE
-	end := min(start+PAGE_SIZE, len(entries))
+	start := f.page * PAGESIZE
+	end := min(start+PAGESIZE, len(entries))
 
 	for i := start; i < end; i++ {
 		entry := entries[i]

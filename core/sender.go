@@ -88,6 +88,9 @@ func (s *Sender) WriteHeader(conn io.Writer, f *FileHeader) (int64, error) {
 }
 
 func (s *Sender) WriteFile(conn io.Writer, file io.Reader, h *FileHeader) (int64, error) {
-	n, err := io.CopyN(conn, file, h.size)
+	text := fmt.Sprintf("Sending %s", h.name)
+	bar := DefaultBar(h.size, text)
+
+	n, err := io.CopyN(io.MultiWriter(conn, bar), file, h.size)
 	return n, err
 }

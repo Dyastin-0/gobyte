@@ -7,14 +7,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 )
 
 const (
-	PEER_PAGE_SIZE = 25
+	PAGESIZE = 25
 )
-
-var activeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
 var SamplePeers = map[string]*peer{
 	"test": {
@@ -37,7 +34,6 @@ func NewPeerSelector(peers map[string]*peer) *PeerSelector {
 	if peers == nil {
 		peers = make(map[string]*peer)
 	}
-
 	return &PeerSelector{
 		peers:    peers,
 		Selected: make(map[string]*peer),
@@ -80,9 +76,6 @@ func (p *PeerSelector) filteredPeers() []*peer {
 }
 
 func (p *PeerSelector) formatPeerOption(peer *peer) string {
-	status := "●"
-	statusStyle := activeStyle
-
 	name := peer.name
 	if len(name) > 20 {
 		name = name[:17] + "..."
@@ -94,17 +87,10 @@ func (p *PeerSelector) formatPeerOption(peer *peer) string {
 	}
 
 	lastSeenStr := ""
+	elapsed := 0
 	if !peer.lastHello.IsZero() {
-		elapsed := time.Since(peer.lastHello)
-		if elapsed < time.Minute {
-			lastSeenStr = fmt.Sprintf("%ds", int(elapsed.Seconds()))
-		} else if elapsed < time.Hour {
-			lastSeenStr = fmt.Sprintf("%dm", int(elapsed.Minutes()))
-		} else if elapsed < 24*time.Hour {
-			lastSeenStr = fmt.Sprintf("%dh", int(elapsed.Hours()))
-		} else {
-			lastSeenStr = fmt.Sprintf("%dd", int(elapsed.Hours()/24))
-		}
+		elapsed = int(time.Since(peer.lastHello).Seconds())
+		lastSeenStr = fmt.Sprintf("%ds", elapsed)
 	}
 
 	peerKey := peer.name
@@ -113,20 +99,27 @@ func (p *PeerSelector) formatPeerOption(peer *peer) string {
 		selectedPrefix = selectedStyle.Render("✓ ")
 	}
 
-	return fmt.Sprintf("%s%s %-20s %-25s %s",
+	text := fmt.Sprintf("%s%-20s %-25s %s",
 		selectedPrefix,
-		statusStyle.Render(status),
 		name,
 		data,
 		lastSeenStr,
 	)
+
+	if time.Since(peer.lastHello) > HelloInterval {
+		text = warningStyle.Render(text)
+	}
+
+	return text
 }
 
 func (p *PeerSelector) RunRecur() error {
+	// Peers will update automatically, since we are using the map pointer
+	// from the broadcaster, beautiful
 	peers := p.filteredPeers()
 
 	totalItems := len(peers)
-	totalPages := (totalItems + PEER_PAGE_SIZE - 1) / PEER_PAGE_SIZE
+	totalPages := (totalItems + PAGESIZE - 1) / PAGESIZE
 	if totalPages == 0 {
 		totalPages = 1
 	}
@@ -155,8 +148,8 @@ func (p *PeerSelector) RunRecur() error {
 		}
 	}
 
-	start := p.page * PEER_PAGE_SIZE
-	end := min(start+PEER_PAGE_SIZE, len(peers))
+	start := p.page * PAGESIZE
+	end := min(start+PAGESIZE, len(peers))
 
 	for i := start; i < end; i++ {
 		peer := peers[i]

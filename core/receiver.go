@@ -109,7 +109,10 @@ func (r *Receiver) Write(rd io.Reader, h *FileHeader) (int64, error) {
 	}
 	defer file.Close()
 
-	n, err := io.CopyN(file, rd, h.size)
+	text := fmt.Sprintf("Writing %s", h.name)
+	bar := DefaultBar(h.size, text)
+
+	n, err := io.CopyN(io.MultiWriter(file, bar), rd, h.size)
 	return n, err
 }
 

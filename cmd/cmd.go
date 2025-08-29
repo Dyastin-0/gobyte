@@ -105,7 +105,6 @@ func receiveAction(ctx context.Context, cmd *cli.Command) error {
 	}()
 
 	<-ctx.Done()
-	close(errch)
 
 	return <-errch
 }

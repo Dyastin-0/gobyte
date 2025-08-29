@@ -105,19 +105,21 @@ func (c *Client) StartSender(ctx context.Context) error {
 
 	go c.broadcaster.Start(cancelContext)
 
+	// Set the peers to selector so we can display them
+	c.peerselector.peers = c.broadcaster.peers
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			c.peerselector.peers = c.broadcaster.peers
 			err := c.peerselector.RunRecur()
 			if err != nil {
 				return err
 			}
 
 			if len(c.peerselector.Selected) == 0 {
-				if Continue("No peers were selected, try again? (Yes/No)") {
+				if Continue("No peers were selected, try again?") {
 					continue
 				}
 
@@ -130,7 +132,7 @@ func (c *Client) StartSender(ctx context.Context) error {
 			}
 
 			if len(c.fileselector.Selected) == 0 {
-				if Continue("No files were selected, try again? (Yes/No)") {
+				if Continue("No files were selected, try again?") {
 					continue
 				}
 
@@ -154,15 +156,13 @@ func (c *Client) StartSender(ctx context.Context) error {
 					return err
 				}
 
-				summ, err := c.sender.Send(conn, c.fileselector.Selected)
+				// TODO: Send the summary to the receiver
+				// before sending an end header
+				_, err = c.sender.Send(conn, c.fileselector.Selected)
 				if err != nil {
 					return err
 				}
 
-				log.Printf("Sent bytes: %d\n", summ.nBytes)
-				log.Printf("Sent files: %d\n", len(summ.files))
-				log.Printf("Failed bytes: %d\n", summ.nFailedBytes)
-				log.Printf("Failed files: %d\n", len(summ.failedFiles))
 			}
 
 			if !Continue("Do you want to send again? (Yes/No)") {
@@ -228,9 +228,8 @@ func (c *Client) ReadResponse(conn net.Conn) (*bool, error) {
 }
 
 func (c *Client) listen(ctx context.Context, ln net.Listener) error {
-	fmt.Println(pageStyle.Italic(true).Render("Listening on port " + c.addr))
+	fmt.Println(pageStyle.Render("Listening on " + c.addr))
 
-	// Close listener when context is cancelled
 	go func() {
 		<-ctx.Done()
 		ln.Close()
@@ -352,7 +351,7 @@ func OnRequest(r *RequestHeader) bool {
 func OnNewPeer(id, fingerprint string) bool {
 	confirm := false
 
-	title := warningStyle.Render("The authenticity of host:%s can't be established. Are you sure you want to continue connecting? (Yes/No)")
+	title := warningStyle.Render(fmt.Sprintf("The authenticity of peer '%s' can't be established.\nCertificate fingerprint is\n%s\nDo you trust this peer?", id, fingerprint))
 
 	huh.NewConfirm().
 		Title(title).
