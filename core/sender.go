@@ -1,4 +1,4 @@
-package gobyte
+package core
 
 import (
 	"bytes"

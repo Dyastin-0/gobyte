@@ -1,33 +1,13 @@
-package main
+// Package cmd ...
+package cmd
 
 import (
 	"context"
-	"log"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/Dyastin-0/gobyte"
+	gobyte "github.com/Dyastin-0/gobyte/core"
 	"github.com/urfave/cli/v3"
 )
-
-func main() {
-	c := New()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		<-sigCh
-		cancel()
-	}()
-
-	if err := c.Run(ctx, os.Args); err != nil {
-		log.Fatal(err)
-	}
-}
 
 func New() *cli.Command {
 	return &cli.Command{

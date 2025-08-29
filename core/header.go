@@ -1,5 +1,4 @@
-// Package gobyte ...
-package gobyte
+package core
 
 const (
 	delim       = byte(0x1D)
