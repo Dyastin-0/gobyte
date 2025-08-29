@@ -139,6 +139,9 @@ func (c *Client) StartSender(ctx context.Context) error {
 				return nil
 			}
 
+			// TODO: Handle multiple peers concurrently
+			// How should we display the bars when sending to multiple peers?
+			// How should we display forms when sending to multiple peers at first time?
 			for _, p := range c.peerselector.Selected {
 				conn, err := c.tofu.Dial(p.data)
 				if err != nil {
