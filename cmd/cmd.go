@@ -5,11 +5,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	gobyte "github.com/Dyastin-0/gobyte/core"
 	"github.com/common-nighthawk/go-figure"
 	"github.com/urfave/cli/v3"
 )
+
+const defaultDir = "gobyte/received"
 
 func New() *cli.Command {
 	return &cli.Command{
@@ -39,11 +42,6 @@ func gobyteAction(ctx context.Context, cmd *cli.Command) error {
 }
 
 func defaultFlags() []cli.Flag {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "./"
-	}
-
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:    "addr",
@@ -53,7 +51,7 @@ func defaultFlags() []cli.Flag {
 		&cli.StringFlag{
 			Name:    "dir",
 			Aliases: []string{"d"},
-			Value:   homeDir,
+			Value:   homeDir(),
 		},
 		&cli.StringFlag{
 			Name:    "bAddr",
@@ -94,6 +92,9 @@ func receiveCommand() *cli.Command {
 func receiveAction(ctx context.Context, cmd *cli.Command) error {
 	addr := cmd.String("addr")
 	dir := cmd.String("dir")
+	if dir == homeDir() {
+		dir = filepath.Join(dir, defaultDir)
+	}
 	baddr := cmd.String("bAddr")
 
 	r := gobyte.NewReceiverClient(addr, baddr, dir)
@@ -107,4 +108,13 @@ func receiveAction(ctx context.Context, cmd *cli.Command) error {
 	<-ctx.Done()
 
 	return <-errch
+}
+
+func homeDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "./"
+	}
+
+	return homeDir
 }

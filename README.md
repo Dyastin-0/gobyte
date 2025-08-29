@@ -14,7 +14,7 @@
 
 ### Protocol
 
-Each connection must start with the sender sending a `RequestHeader` which is encoded as `0x1F<number of files>0x1F<total bytes>0x1F0x1D`.
+Each connection must start with the sender sending a `RequestHeader` which is encoded as `0x1F<version>0x1F<number of files>0x1F<total bytes>0x1F0x1D`.
 
 The receiver can either send an ok or not ok `ResponseHeader`: `0x1F0x00x1F0x1D` or `0x1F0x1A0x1F0x1D` respectively. Sending a not ok response will immediately terminate the connection. 
 

@@ -59,7 +59,7 @@ func NewReceiverClient(addr, baddr, dir string) *Client {
 	return &Client{
 		addr:         addr,
 		broadcaster:  NewBroadcaster(baddr, addr),
-		receiver:     NewReceiver(addr),
+		receiver:     NewReceiver(dir),
 		fileselector: NewFileSelector(dir),
 		peerselector: NewPeerSelector(nil),
 		tofu:         tofu.New(hostname()),
