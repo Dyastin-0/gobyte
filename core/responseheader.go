@@ -7,14 +7,16 @@ import (
 )
 
 const (
-	ResponseOk    = byte(0x00)
-	ResponseNotOK = byte(0x1A)
+	ResponseOk              = byte(0x00)
+	ResponseNotOK           = byte(0x1A)
+	ResponseVersionMismatch = byte(0x15)
 )
 
 var (
-	ErrMalformedResponseHeader = errors.New("malformed response header")
-	OkResponseHeaderBytes      = []byte{headerDelim, ResponseOk, headerDelim, delim}
-	NotOkResponseHeaderBytes   = []byte{headerDelim, ResponseNotOK, headerDelim, delim}
+	ErrMalformedResponseHeader         = errors.New("malformed response header")
+	OkResponseHeaderBytes              = []byte{headerDelim, ResponseOk, headerDelim, delim}
+	NotOkResponseHeaderBytes           = []byte{headerDelim, ResponseNotOK, headerDelim, delim}
+	VersionMismatchResponseHeaderBytes = []byte{headerDelim, ResponseVersionMismatch, headerDelim, delim}
 )
 
 type EncodedResponseHeader []byte
@@ -36,7 +38,7 @@ func (e *EncodedResponseHeader) Parse() (Header, error) {
 	ok := parts[1]
 	ok = strings.TrimSpace(ok)
 	bytesOk := []byte(ok)[0]
-	if bytesOk != ResponseNotOK && bytesOk != ResponseOk {
+	if bytesOk != ResponseNotOK && bytesOk != ResponseOk && bytesOk != ResponseVersionMismatch {
 		return nil, ErrMalformedResponseHeader
 	}
 

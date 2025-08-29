@@ -144,8 +144,9 @@ func (c *Client) StartSender(ctx context.Context) error {
 				}
 
 				r := &RequestHeader{
-					n:      len(c.fileselector.Selected),
-					nbytes: c.fileselector.nBytesSelected,
+					n:       len(c.fileselector.Selected),
+					nbytes:  c.fileselector.nBytesSelected,
+					version: VERSION,
 				}
 
 				err = c.WriteRequest(conn, r)
@@ -216,6 +217,10 @@ func (c *Client) ReadResponse(conn net.Conn) (*bool, error) {
 	parsedHeader, ok := header.(*ResponseHeader)
 	if !ok {
 		return nil, errors.New("faild to type assert to ResponseHeader")
+	}
+
+	if parsedHeader.ok == ResponseVersionMismatch {
+		return nil, ErrVersionMismatch
 	}
 
 	ok = parsedHeader.ok == ResponseOk

@@ -3,17 +3,20 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	gobyte "github.com/Dyastin-0/gobyte/core"
+	"github.com/common-nighthawk/go-figure"
 	"github.com/urfave/cli/v3"
 )
 
 func New() *cli.Command {
 	return &cli.Command{
-		Name:   "gobyte",
-		Usage:  "a simple p2p local area network file sharing cli app",
-		Action: gobyteAction,
+		Name:    "gobyte",
+		Usage:   "a simple p2p local area network file sharing cli app",
+		Version: gobyte.VERSION,
+		Action:  gobyteAction,
 		Commands: []*cli.Command{
 			sendCommand(),
 			receiveCommand(),
@@ -22,6 +25,16 @@ func New() *cli.Command {
 }
 
 func gobyteAction(ctx context.Context, cmd *cli.Command) error {
+	figure := figure.NewFigure("gobyte-cli", "", true)
+	figure.Print()
+
+	fmt.Println()
+
+	err := cli.ShowAppHelp(cmd)
+	if err != nil {
+		panic(err)
+	}
+
 	return nil
 }
 
@@ -72,7 +85,7 @@ func sendAction(ctx context.Context, cmd *cli.Command) error {
 func receiveCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "receive",
-		Usage:  "run as a receier",
+		Usage:  "run as a receiver",
 		Flags:  defaultFlags(),
 		Action: receiveAction,
 	}

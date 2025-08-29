@@ -1,6 +1,7 @@
 package core
 
 import (
+	"io"
 	"net"
 	"testing"
 
@@ -16,8 +17,9 @@ func TestRequestResponse(t *testing.T) {
 	defer sender.Close()
 
 	r := &RequestHeader{
-		nbytes: 420,
-		n:      69,
+		nbytes:  420,
+		n:       69,
+		version: VERSION,
 	}
 
 	go c.WriteRequest(receiver, r)
@@ -48,4 +50,27 @@ func TestRequestResponse(t *testing.T) {
 	}
 
 	assert.Equal(t, *rEncodedBytes, *rrEncodedBytes)
+}
+
+func TestSendMismatchHeaderRequest(t *testing.T) {
+	c := &Client{}
+	receiver, sender := net.Pipe()
+	defer receiver.Close()
+	defer sender.Close()
+
+	r := &RequestHeader{
+		nbytes:  420,
+		n:       69,
+		version: "0.1",
+	}
+
+	go func() {
+		defer receiver.Close()
+		c.WriteRequest(receiver, r)
+	}()
+
+	_, err := c.ReadRequest(sender)
+	if err != io.EOF {
+		t.Errorf("expected EOF, but got %s\n", err)
+	}
 }

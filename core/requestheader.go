@@ -7,11 +7,19 @@ import (
 	"strings"
 )
 
-var ErrMalformedRequestHeader = errors.New("malformed request header")
+const (
+	VERSION = "0.2"
+)
+
+var (
+	ErrMalformedRequestHeader = errors.New("malformed request header")
+	ErrVersionMismatch        = errors.New("version mismatch")
+)
 
 type RequestHeader struct {
-	n      int
-	nbytes int64
+	version string
+	n       int
+	nbytes  int64
 }
 
 type EncodedRequestHeader []byte
@@ -22,11 +30,17 @@ func (e *EncodedRequestHeader) String() string {
 
 func (e *EncodedRequestHeader) Parse() (Header, error) {
 	parts := strings.Split(e.String(), string(headerDelim))
-	if len(parts) != 4 {
+	if len(parts) != 5 {
 		return nil, ErrMalformedRequestHeader
 	}
 
-	n := parts[1]
+	v := parts[1]
+	v = strings.TrimSpace(v)
+	if v != VERSION {
+		return nil, ErrVersionMismatch
+	}
+
+	n := parts[2]
 	n = strings.TrimSpace(n)
 	parsedN, err := strconv.Atoi(n)
 	if err != nil {
@@ -37,7 +51,7 @@ func (e *EncodedRequestHeader) Parse() (Header, error) {
 		return nil, ErrMalformedRequestHeader
 	}
 
-	nbytes := parts[2]
+	nbytes := parts[3]
 	nbytes = strings.TrimSpace(nbytes)
 	parsedNbytes, err := strconv.ParseInt(nbytes, 10, 64)
 	if err != nil {
@@ -48,7 +62,7 @@ func (e *EncodedRequestHeader) Parse() (Header, error) {
 		return nil, ErrMalformedRequestHeader
 	}
 
-	return &RequestHeader{n: parsedN, nbytes: parsedNbytes}, nil
+	return &RequestHeader{version: VERSION, n: parsedN, nbytes: parsedNbytes}, nil
 }
 
 func (r *RequestHeader) Encoded() (Encoded, error) {
@@ -60,8 +74,16 @@ func (r *RequestHeader) Encoded() (Encoded, error) {
 		return nil, ErrMalformedRequestHeader
 	}
 
+	v := r.version
+	v = strings.TrimSpace(v)
+	if v != VERSION {
+		return nil, ErrVersionMismatch
+	}
+
 	hd := fmt.Sprintf(
-		"%s%d%s%d%s%s",
+		"%s%s%s%d%s%d%s%s",
+		string(headerDelim),
+		r.version,
 		string(headerDelim),
 		r.n,
 		string(headerDelim),

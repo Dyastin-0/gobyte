@@ -10,8 +10,9 @@ import (
 
 func TestParseRequestHeader(t *testing.T) {
 	h := &RequestHeader{
-		n:      10,
-		nbytes: 124,
+		n:       10,
+		nbytes:  124,
+		version: VERSION,
 	}
 
 	hEncoded, err := h.Encoded()
@@ -41,7 +42,9 @@ func TestParseRequestHeader(t *testing.T) {
 
 	expected := EncodedRequestHeader(
 		fmt.Appendf(nil,
-			"%s%s%s%s%s%s",
+			"%s%s%s%s%s%s%s%s",
+			string(headerDelim),
+			VERSION,
 			string(headerDelim),
 			strconv.FormatInt(int64(h.n), 10),
 			string(headerDelim),
@@ -54,4 +57,36 @@ func TestParseRequestHeader(t *testing.T) {
 	assert.Equal(t, *hEncodedBytes, *hhEncodedBytes)
 	assert.Equal(t, expected, *hEncodedBytes)
 	assert.Equal(t, expected, *hhEncodedBytes)
+}
+
+func TestParseMismatchRequestHeader(t *testing.T) {
+	r := &RequestHeader{
+		nbytes:  420,
+		n:       69,
+		version: "0.1",
+	}
+
+	_, err := r.Encoded()
+	if err != ErrVersionMismatch {
+		t.Errorf("expected ErrVersionMismatch, but got %v\n", err)
+	}
+
+	encodedBytes := EncodedRequestHeader(
+		fmt.Appendf(nil,
+			"%s%s%s%s%s%s%s%s",
+			string(headerDelim),
+			"0.1",
+			string(headerDelim),
+			"69",
+			string(headerDelim),
+			"420",
+			string(headerDelim),
+			string(delim),
+		),
+	)
+
+	_, err = encodedBytes.Parse()
+	if err != ErrVersionMismatch {
+		t.Errorf("expected ErrVersionMismatch, but got %v\n", err)
+	}
 }
