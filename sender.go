@@ -77,9 +77,9 @@ func (s *Sender) WriteHeader(conn io.Writer, f *FileHeader) (int64, error) {
 		return 0, err
 	}
 
-	encodedBytes, ok := encoded.(*EncodedHeader)
+	encodedBytes, ok := encoded.(*EncodedFileHeader)
 	if !ok {
-		return 0, errors.New("failed to type assert to EncodedHeader")
+		return 0, errors.New("failed to type assert to EncodedFileHeader")
 	}
 
 	rd := bytes.NewReader(*encodedBytes)
@@ -89,6 +89,5 @@ func (s *Sender) WriteHeader(conn io.Writer, f *FileHeader) (int64, error) {
 
 func (s *Sender) WriteFile(conn io.Writer, file io.Reader, h *FileHeader) (int64, error) {
 	n, err := io.CopyN(conn, file, h.size)
-	log.Printf("wrote: %s (%d)\n", h.name, h.size)
 	return n, err
 }

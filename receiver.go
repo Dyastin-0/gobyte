@@ -63,7 +63,7 @@ func (r *Receiver) receive(rd io.Reader) error {
 			return nil
 		}
 
-		encoded := EncodedHeader(header)
+		encoded := EncodedFileHeader(header)
 		h, err := encoded.Parse()
 		if err != nil {
 			// if current header is malformed, read until the next header again
@@ -110,8 +110,6 @@ func (r *Receiver) Write(rd io.Reader, h *FileHeader) (int64, error) {
 	defer file.Close()
 
 	n, err := io.CopyN(file, rd, h.size)
-	log.Printf("wrote: %s (%d)\n", h.name, h.size)
-
 	return n, err
 }
 

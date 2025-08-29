@@ -8,28 +8,16 @@ import (
 	"io"
 	"log"
 	"net"
-	"strconv"
-	"strings"
 
 	"github.com/Dyastin-0/gobyte/tofu"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
 
-const (
-	ResponseOk    = byte(0x00)
-	ResponseNotOK = byte(0x1A)
-)
-
 var (
-	ErrMalformedRequestHeader  = errors.New("malformed request header")
-	ErrMalformedResponseHeader = errors.New("malformed response header")
-	ErrRequestDenied           = errors.New("request denied")
+	ErrRequestDenied = errors.New("request denied")
 
 	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-
-	OkResponseHeaderBytes    = []byte{headerDelim, ResponseOk, headerDelim, delim}
-	NotOkResponseHeaderBytes = []byte{headerDelim, ResponseNotOK, headerDelim, delim}
 )
 
 type Client struct {
@@ -40,21 +28,9 @@ type Client struct {
 	fileselector *FileSelector
 	peerselector *PeerSelector
 	tofu         *tofu.Tofu
-}
 
-type RequestHeader struct {
-	n      int
-	nbytes int64
+	onRequest func(*RequestHeader) bool
 }
-
-type ResponseHeader struct {
-	ok byte
-}
-
-type (
-	EncodedResponseHeader []byte
-	EncodedRequestHeader  []byte
-)
 
 func NewSenderClient(addr, baddr, dir string) *Client {
 	if dir == "" {
@@ -87,102 +63,8 @@ func NewReceiverClient(addr, baddr, dir string) *Client {
 		fileselector: NewFileSelector(dir),
 		peerselector: NewPeerSelector(nil),
 		tofu:         tofu.New(hostname()),
+		onRequest:    OnRequest,
 	}
-}
-
-func (e *EncodedResponseHeader) String() string {
-	return string(*e)
-}
-
-func (e *EncodedRequestHeader) String() string {
-	return string(*e)
-}
-
-func (e *EncodedResponseHeader) Parse() (Header, error) {
-	parts := strings.Split(e.String(), string(headerDelim))
-	if len(parts) != 3 {
-		return nil, ErrMalformedResponseHeader
-	}
-
-	ok := parts[1]
-	ok = strings.TrimSpace(ok)
-	bytesOk := []byte(ok)[0]
-	if bytesOk != ResponseNotOK && bytesOk != ResponseOk {
-		return nil, ErrMalformedResponseHeader
-	}
-
-	return &ResponseHeader{ok: bytesOk}, nil
-}
-
-func (e *EncodedRequestHeader) Parse() (Header, error) {
-	parts := strings.Split(e.String(), string(headerDelim))
-	if len(parts) != 4 {
-		return nil, ErrMalformedRequestHeader
-	}
-
-	n := parts[1]
-	n = strings.TrimSpace(n)
-	parsedN, err := strconv.Atoi(n)
-	if err != nil {
-		return nil, err
-	}
-
-	if parsedN <= 0 {
-		return nil, ErrMalformedRequestHeader
-	}
-
-	nbytes := parts[2]
-	nbytes = strings.TrimSpace(nbytes)
-	parsedNbytes, err := strconv.ParseInt(nbytes, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	if parsedNbytes < 0 {
-		return nil, ErrMalformedRequestHeader
-	}
-
-	return &RequestHeader{n: parsedN, nbytes: parsedNbytes}, nil
-}
-
-func (r *ResponseHeader) Encoded() (Encoded, error) {
-	if r.ok != ResponseOk && r.ok != ResponseNotOK {
-		return nil, ErrMalformedResponseHeader
-	}
-
-	hd := fmt.Sprintf(
-		"%s%s%s%s",
-		string(headerDelim),
-		string(r.ok),
-		string(headerDelim),
-		string(delim),
-	)
-
-	b := EncodedResponseHeader(hd)
-	return &b, nil
-}
-
-func (r *RequestHeader) Encoded() (Encoded, error) {
-	if r.n <= 0 {
-		return nil, ErrMalformedRequestHeader
-	}
-
-	if r.n < 0 {
-		return nil, ErrMalformedRequestHeader
-	}
-
-	hd := fmt.Sprintf(
-		"%s%d%s%d%s%s",
-		string(headerDelim),
-		r.n,
-		string(headerDelim),
-		r.nbytes,
-		string(headerDelim),
-		string(delim),
-	)
-
-	b := EncodedRequestHeader(hd)
-	return &b, nil
 }
 
 func (c *Client) StartReceiver(ctx context.Context) error {
@@ -238,6 +120,8 @@ func (c *Client) StartSender(ctx context.Context) error {
 				if Continue("No peers were selected, try again? (Yes/No)") {
 					continue
 				}
+
+				return nil
 			}
 
 			err = c.fileselector.RunRecur()
@@ -249,6 +133,8 @@ func (c *Client) StartSender(ctx context.Context) error {
 				if Continue("No files were selected, try again? (Yes/No)") {
 					continue
 				}
+
+				return nil
 			}
 
 			for _, p := range c.peerselector.Selected {
@@ -273,9 +159,9 @@ func (c *Client) StartSender(ctx context.Context) error {
 				}
 
 				log.Printf("Sent bytes: %d\n", summ.nBytes)
-				log.Printf("Sent files: %d\n", summ.files)
+				log.Printf("Sent files: %d\n", len(summ.files))
 				log.Printf("Failed bytes: %d\n", summ.nFailedBytes)
-				log.Printf("Failed files: %d\n", summ.failedFiles)
+				log.Printf("Failed files: %d\n", len(summ.failedFiles))
 			}
 
 			if !Continue("Do you want to send again? (Yes/No)") {
@@ -373,59 +259,61 @@ func (c *Client) listen(ctx context.Context, ln net.Listener) error {
 }
 
 func (c *Client) handleConn(conn net.Conn) error {
+	if c.onRequest == nil {
+		c.onRequest = OnRequest
+	}
+
+	// First header should be a RequestHeader
+	// if this is not a RequestHeader
+	// they can try to send a new header until conn is closed
+	r, err := c.ReadRequest(conn)
+	if err != nil {
+		return err
+	}
+
+	ok := c.onRequest(r)
+	if !ok {
+		_, err = conn.Write(NotOkResponseHeaderBytes)
+		return err
+	}
+
+	_, err = conn.Write(OkResponseHeaderBytes)
+	if err != nil {
+		return err
+	}
+
+	// Proceeding bytes will be a chain of EncodedFileHeader and actual file bytes
+	// if EncodedEndHeader is received, conn will be closed
+	// we will pass the reader to Receiver, which will handle all the parsing for files
+	return c.receiver.receive(conn)
+}
+
+func (c *Client) ReadRequest(conn net.Conn) (*RequestHeader, error) {
 	reader := bufio.NewReader(conn)
 
 	for {
 		header, err := reader.ReadString(delim)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return err
+				return nil, err
 			}
 			continue
 		}
 
-		// First header should be a RequestHeader
-		// if this is not a RequestHeader
-		// they can try to send a new header until conn is closed
-		r, err := c.ReadRequest(header)
+		h := EncodedRequestHeader(header)
+
+		hd, err := h.Parse()
 		if err != nil {
-			log.Printf("[err] %v\n", err)
-			continue
+			return nil, err
 		}
 
-		ok := OnRequest(r)
+		parsed, ok := hd.(*RequestHeader)
 		if !ok {
-
-			_, err := conn.Write(NotOkResponseHeaderBytes)
-			return err
+			return nil, errors.New("failed to type assert to RequestHeader")
 		}
 
-		_, err = conn.Write(OkResponseHeaderBytes)
-
-		// Proceeding bytes will be a chain of EncodedFileHeader and actual file bytes
-		// if EncodedEndHeader is received, conn will be closed
-		// we will pass the reader to Receiver, which will handle all the parsing for files
-		err = c.receiver.receive(reader)
-		if err != nil {
-			return err
-		}
+		return parsed, nil
 	}
-}
-
-func (c *Client) ReadRequest(header string) (*RequestHeader, error) {
-	h := EncodedRequestHeader(header)
-
-	hd, err := h.Parse()
-	if err != nil {
-		return nil, err
-	}
-
-	parsed, ok := hd.(*RequestHeader)
-	if !ok {
-		return nil, errors.New("failed to type assert to RequestHeader")
-	}
-
-	return parsed, nil
 }
 
 func Continue(txt string) bool {
@@ -442,7 +330,7 @@ func Continue(txt string) bool {
 }
 
 func OnRequest(r *RequestHeader) bool {
-	var confirm bool
+	confirm := false
 
 	title := fmt.Sprintf("Accept %d files? (%d bytes) \n", r.n, r.nbytes)
 
@@ -457,7 +345,7 @@ func OnRequest(r *RequestHeader) bool {
 }
 
 func OnNewPeer(id, fingerprint string) bool {
-	var confirm bool
+	confirm := false
 
 	title := warningStyle.Render("The authenticity of host:%s can't be established. Are you sure you want to continue connecting? (Yes/No)")
 

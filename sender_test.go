@@ -13,7 +13,7 @@ import (
 
 func TestSend(t *testing.T) {
 	dir := t.TempDir()
-	s := NewSender(dir)
+	s := NewSender()
 
 	testFilePath := filepath.Join(dir, "test.txt")
 	err := os.WriteFile(testFilePath, []byte("test content"), 0644)
@@ -27,16 +27,20 @@ func TestSend(t *testing.T) {
 	}
 
 	fileHeader := &FileHeader{
-		name: fileStat.Name(),
-		size: fileStat.Size(),
-		path: dir,
+		name:    fileStat.Name(),
+		size:    fileStat.Size(),
+		path:    dir,
+		abspath: testFilePath,
 	}
 
 	receiver, sender := io.Pipe()
 	go func() {
 		io.Copy(io.Discard, receiver)
 	}()
-	summ, err := s.Send(sender, []*FileHeader{fileHeader})
+	summ, err := s.Send(sender, map[string]*FileHeader{"test.txt": fileHeader})
+	if err != nil {
+		t.Error(err)
+	}
 	receiver.Close()
 
 	assert.Equal(t, fileHeader.size, summ.nBytes)
@@ -45,7 +49,7 @@ func TestSend(t *testing.T) {
 func TestSendReceive(t *testing.T) {
 	dir := t.TempDir()
 	dir1 := t.TempDir()
-	s := NewSender(dir)
+	s := NewSender()
 	r := NewReceiver(dir1)
 
 	testFilePath := filepath.Join(dir, "test.txt")
@@ -60,9 +64,10 @@ func TestSendReceive(t *testing.T) {
 	}
 
 	fileHeader := &FileHeader{
-		name: fileStat.Name(),
-		size: fileStat.Size(),
-		path: dir,
+		name:    fileStat.Name(),
+		size:    fileStat.Size(),
+		path:    dir,
+		abspath: testFilePath,
 	}
 
 	receiver, sender := io.Pipe()
@@ -71,7 +76,10 @@ func TestSendReceive(t *testing.T) {
 
 	go r.receive(receiver)
 
-	summ, err := s.Send(sender, []*FileHeader{fileHeader})
+	summ, err := s.Send(sender, map[string]*FileHeader{"test.txt": fileHeader})
+	if err != nil {
+		t.Error(err)
+	}
 	receiver.Close()
 
 	assert.Equal(t, fileHeader.size, summ.nBytes)
@@ -87,8 +95,8 @@ func TestSendReceive(t *testing.T) {
 	assert.Equal(t, summ.nBytes, receivedFileStat.Size())
 }
 
-func createNFiles(n int, dir string) (int64, []*FileHeader, error) {
-	files := make([]*FileHeader, 0, n)
+func createNFiles(n int, dir string) (int64, map[string]*FileHeader, error) {
+	files := make(map[string]*FileHeader, n)
 
 	var sumBytes int64
 
@@ -108,11 +116,12 @@ func createNFiles(n int, dir string) (int64, []*FileHeader, error) {
 
 		sumBytes += fileStat.Size()
 
-		files = append(files, &FileHeader{
-			name: fileStat.Name(),
-			size: fileStat.Size(),
-			path: dir,
-		})
+		files[filepath] = &FileHeader{
+			name:    fileStat.Name(),
+			size:    fileStat.Size(),
+			path:    dir,
+			abspath: filepath,
+		}
 	}
 
 	return sumBytes, files, nil
@@ -121,7 +130,7 @@ func createNFiles(n int, dir string) (int64, []*FileHeader, error) {
 func TestSendReceivedMany(t *testing.T) {
 	dir := t.TempDir()
 	dir1 := t.TempDir()
-	s := NewSender(dir)
+	s := NewSender()
 	r := NewReceiver(dir1)
 
 	sumBytes, files, err := createNFiles(1000, dir)

@@ -36,11 +36,11 @@ func TestReceive(t *testing.T) {
 		t.Error(err)
 	}
 
-	hEncoded = hEncoded.(*EncodedHeader)
+	hEncoded = hEncoded.(*EncodedFileHeader)
 
-	encodedBytes, ok := hEncoded.(*EncodedHeader)
+	encodedBytes, ok := hEncoded.(*EncodedFileHeader)
 	if !ok {
-		t.Error("failed to type assert to *EncodedHeader")
+		t.Error("failed to type assert to *EncodedFileHeader")
 	}
 
 	bytesfull := append(*encodedBytes, []byte("test")...)
@@ -82,7 +82,7 @@ func TestReceiveRecoverCorrupt(t *testing.T) {
 
 	b := []byte("magic bytes")
 	b = append(b, []byte{headerDelim, headerDelim, headerDelim, delim}...)
-	corruptedHeader := EncodedHeader(b)
+	corruptedHeader := EncodedFileHeader(b)
 
 	conn, err := net.Dial("tcp", ":9090")
 	if err != nil {
@@ -105,9 +105,9 @@ func TestReceiveRecoverCorrupt(t *testing.T) {
 		t.Error(err)
 	}
 
-	encodedBytes, ok := hEncoded.(*EncodedHeader)
+	encodedBytes, ok := hEncoded.(*EncodedFileHeader)
 	if !ok {
-		t.Error("failed to type assert to *EncodedHeader")
+		t.Error("failed to type assert to *EncodedFileHeader")
 	}
 
 	bytesfull := append(*encodedBytes, []byte("test")...)
