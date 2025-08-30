@@ -24,6 +24,12 @@ When sending a file, the sender must send a `FileHeader` which is encoded as `0x
 
 An entire file will look like `0x1F110x1Fhello_world.txt0x1F./0x1F0x1Dhello world0x1D`. The sender can send multiple files unless it explicitly sends `0x1F0x1E0x1F0x1D` which is an `EndHeader` - then the receiver will immediately terminate the connection.
 
+## Install
+
+```bash
+go install github.com/Dyastin-0/gobyte@latest
+```
+
 ## Usage
 
 Start as a receiver:
