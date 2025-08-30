@@ -5,45 +5,39 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 )
 
 type Sender struct{}
-
-type summary struct {
-	nBytes int64
-	files  []*FileHeader
-
-	nFailedBytes int64
-	failedFiles  []*FileHeader
-}
 
 func NewSender() *Sender {
 	return &Sender{}
 }
 
-func (s *Sender) Send(conn io.Writer, files map[string]*FileHeader) (*summary, error) {
-	summ := &summary{
+func (s *Sender) Send(conn io.Writer, files map[string]*FileHeader, rq *RequestHeader) (*SummaryHeader, error) {
+	summ := &SummaryHeader{
 		files:       make([]*FileHeader, 0),
 		failedFiles: make([]*FileHeader, 0),
 	}
 
+	counter := 1
+
 	for _, file := range files {
 		_, err := s.WriteHeader(conn, file)
 		if err != nil {
+			fmt.Printf("[err]: %v\n", err)
 			summ.failedFiles = append(summ.failedFiles, file)
-			summ.nFailedBytes += file.size
+			summ.nFailedBytes += float64(file.size) / 1048576.0
 			continue
 		}
 
 		f, err := file.Open()
 		if err != nil {
 			summ.failedFiles = append(summ.failedFiles, file)
-			summ.nFailedBytes += file.size
+			summ.nFailedBytes += float64(file.size) / 1048576.0
 			return summ, err
 		}
 
-		written, err := s.WriteFile(conn, f, file)
+		written, err := s.WriteFile(conn, f, file, rq, counter)
 		f.Close()
 
 		if err != nil {
@@ -56,15 +50,25 @@ func (s *Sender) Send(conn io.Writer, files map[string]*FileHeader) (*summary, e
 		}
 
 		summ.files = append(summ.files, file)
-		summ.nBytes += written
-	}
-
-	_, err := s.WriteEnd(conn)
-	if err != nil {
-		log.Println("[warn] failed to write end, but all files are written")
+		summ.nBytes += float64(written) / 1048576.0
+		counter++
 	}
 
 	return summ, nil
+}
+
+func (s *Sender) WriteSummary(conn io.Writer, summ *SummaryHeader) (int, error) {
+	encoded, err := summ.Encoded()
+	if err != nil {
+		return 0, err
+	}
+
+	encodedBytes, ok := encoded.(*EncodedSummaryHeader)
+	if !ok {
+		return 0, errors.New("failed to type assert to EncodedSummaryHeader")
+	}
+
+	return conn.Write(*encodedBytes)
 }
 
 func (s *Sender) WriteEnd(conn io.Writer) (int, error) {
@@ -87,8 +91,8 @@ func (s *Sender) WriteHeader(conn io.Writer, f *FileHeader) (int64, error) {
 	return io.Copy(conn, rd)
 }
 
-func (s *Sender) WriteFile(conn io.Writer, file io.Reader, h *FileHeader) (int64, error) {
-	text := fmt.Sprintf("Sending %s", h.name)
+func (s *Sender) WriteFile(conn io.Writer, file io.Reader, h *FileHeader, rq *RequestHeader, count int) (int64, error) {
+	text := fmt.Sprintf("[%d/%d] Sending %s", count, rq.n, h.name)
 	bar := DefaultBar(h.size, text)
 
 	n, err := io.CopyN(io.MultiWriter(conn, bar), file, h.size)

@@ -24,6 +24,7 @@ func DefaultBar(maxBytes int64, desc string) *progressbar.ProgressBar {
 		progressbar.OptionSetDescription(desc),
 		progressbar.OptionShowTotalBytes(true),
 		progressbar.OptionShowBytes(true),
+		progressbar.OptionShowElapsedTimeOnFinish(),
 		progressbar.OptionFullWidth(),
 		progressbar.OptionThrottle(100*time.Millisecond),
 		progressbar.OptionShowCount(),

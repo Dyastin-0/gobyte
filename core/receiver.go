@@ -2,11 +2,8 @@ package core
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"io"
-	"log"
-	"net"
 	"os"
 	"path/filepath"
 )
@@ -21,31 +18,9 @@ func NewReceiver(dir string) *Receiver {
 	}
 }
 
-func (r *Receiver) Listen(ctx context.Context, ln net.Listener) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			conn, err := ln.Accept()
-			if err != nil && err == io.EOF {
-				return err
-			}
-
-			go func(conn net.Conn) {
-				defer conn.Close()
-
-				err := r.receive(conn)
-				if err != nil {
-					log.Printf("[err] %v\n", err)
-				}
-			}(conn)
-		}
-	}
-}
-
-func (r *Receiver) receive(rd io.Reader) error {
+func (r *Receiver) receive(rd io.Reader, rq *RequestHeader) error {
 	reader := bufio.NewReader(rd)
+	counter := 1
 
 	for {
 		header, err := reader.ReadString(delim)
@@ -54,6 +29,22 @@ func (r *Receiver) receive(rd io.Reader) error {
 				return nil
 			}
 			return err
+		}
+
+		encodedSummary := EncodedSummaryHeader(header)
+		summ, err := encodedSummary.Parse()
+		if err == nil {
+			parsedSumm, ok := summ.(*SummaryHeader)
+			if !ok {
+				continue
+			}
+
+			fmt.Printf(
+				"[Summary] Received %f MB\n[Summary] Failed %f MB\n",
+				parsedSumm.nBytes,
+				parsedSumm.nFailedBytes,
+			)
+			continue
 		}
 
 		encodedEnd := EncodedEndHeader(header)
@@ -75,14 +66,16 @@ func (r *Receiver) receive(rd io.Reader) error {
 			continue
 		}
 
-		_, err = r.Write(reader, parsedHeader)
+		_, err = r.Write(reader, parsedHeader, rq, counter)
 		if err != nil {
 			return nil
 		}
+
+		counter++
 	}
 }
 
-func (r *Receiver) Write(rd io.Reader, h *FileHeader) (int64, error) {
+func (r *Receiver) Write(rd io.Reader, h *FileHeader, rq *RequestHeader, counter int) (int64, error) {
 	path := filepath.Join(r.dir, h.path)
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return 0, err
@@ -109,7 +102,7 @@ func (r *Receiver) Write(rd io.Reader, h *FileHeader) (int64, error) {
 	}
 	defer file.Close()
 
-	text := fmt.Sprintf("Writing %s", h.name)
+	text := fmt.Sprintf("[%d/%d] Writing %s", counter, rq.n, h.name)
 	bar := DefaultBar(h.size, text)
 
 	n, err := io.CopyN(io.MultiWriter(file, bar), rd, h.size)

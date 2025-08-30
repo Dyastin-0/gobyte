@@ -19,7 +19,7 @@ var (
 type RequestHeader struct {
 	version string
 	n       int
-	nbytes  int64
+	nbytes  float64
 }
 
 type EncodedRequestHeader []byte
@@ -53,7 +53,7 @@ func (e *EncodedRequestHeader) Parse() (Header, error) {
 
 	nbytes := parts[3]
 	nbytes = strings.TrimSpace(nbytes)
-	parsedNbytes, err := strconv.ParseInt(nbytes, 10, 64)
+	parsedNbytes, err := strconv.ParseFloat(nbytes, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (r *RequestHeader) Encoded() (Encoded, error) {
 	}
 
 	hd := fmt.Sprintf(
-		"%s%s%s%d%s%d%s%s",
+		"%s%s%s%d%s%f%s%s",
 		string(headerDelim),
 		r.version,
 		string(headerDelim),

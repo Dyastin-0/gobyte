@@ -136,6 +136,8 @@ func (p *PeerSelector) RunRecur() error {
 	}
 	options = append(options, huh.NewOption(filterText, "filter"))
 
+	options = append(options, huh.NewOption("Refresh", "refresh"))
+
 	if totalPages > 1 {
 		pageInfo := fmt.Sprintf("Page %d of %d (%d peers)", p.page+1, totalPages, totalItems)
 		options = append(options, huh.NewOption(pageStyle.Render(pageInfo), "page_info"))
@@ -184,8 +186,14 @@ func (p *PeerSelector) RunRecur() error {
 		return ErrCanceled
 	case "done":
 		return nil
+	case "refresh":
+		return p.RunRecur()
 	case "filter":
-		return p.Filter()
+		err := p.Filter()
+		if err != nil {
+			return err
+		}
+		return p.RunRecur()
 	case "prev_page":
 		p.page--
 		return p.RunRecur()
@@ -210,12 +218,12 @@ func (p *PeerSelector) Filter() error {
 
 	err := form.Run()
 	if err != nil {
-		return p.RunRecur()
+		return err
 	}
 
 	p.filter = strings.TrimSpace(newFilter)
 	p.page = 0
-	return p.RunRecur()
+	return nil
 }
 
 func (p *PeerSelector) TogglePeer(peerName string) {

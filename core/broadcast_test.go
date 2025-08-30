@@ -45,27 +45,7 @@ func TestBroadcastServer(t *testing.T) {
 
 	conn.Write(*encodedBytes)
 
-	time.Sleep(time.Millisecond * 50)
-
-	buf := make([]byte, 1024)
-	n, _, err := conn.ReadFromUDP(buf)
-	if err != nil {
-		t.Error(err)
-	}
-
-	encodedBytess := EncodedUDPMessage(buf[:n])
-
-	h, err := encodedBytess.Parse()
-	if err != nil {
-		t.Error(err)
-	}
-
-	parsedHeader, ok := h.(*BroadcastMessage)
-	if !ok {
-		t.Error("failed to type assert to BroadcastMessage")
-	}
-
-	assert.Equal(t, msg.Type, parsedHeader.Type)
+	time.Sleep(time.Second * 4)
 
 	b.mu.Lock()
 	if p, ok := b.peers["TEST"]; !ok {
@@ -84,8 +64,6 @@ func TestPeerDelete(t *testing.T) {
 	b := NewBroadcaster(":8080", ":42069")
 	ctx, cancel := context.WithCancel(context.Background())
 	go b.Start(ctx)
-
-	time.Sleep(time.Millisecond * 50)
 
 	addr, err := net.ResolveUDPAddr("udp", b.addr)
 	if err != nil {
@@ -114,7 +92,7 @@ func TestPeerDelete(t *testing.T) {
 
 	conn.Write(*encodedBytes)
 
-	time.Sleep(time.Second * 7)
+	time.Sleep(time.Second * 1)
 
 	b.mu.Lock()
 	if _, ok := b.peers["TEST"]; ok {
@@ -123,11 +101,10 @@ func TestPeerDelete(t *testing.T) {
 	b.mu.Unlock()
 
 	cancel()
-	time.Sleep(time.Millisecond * 50)
 }
 
 func TestMalformedBroadcastMessage(t *testing.T) {
-	b := NewBroadcaster(":8080", ":42069")
+	b := NewBroadcaster(":8082", ":42069")
 	ctx, cancel := context.WithCancel(context.Background())
 	go b.Start(ctx)
 

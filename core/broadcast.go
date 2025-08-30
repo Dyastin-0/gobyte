@@ -24,47 +24,12 @@ const (
 
 var (
 	ErrMalformedBroadcastMessage = errors.New("malformed broadcast message")
-
-	MalformedBroadcastMessage = &BroadcastMessage{
-		Type: TypeBroadcastMessageError,
-		Data: "Malformed message",
+	HelloInterval                = time.Second * 2
+	validTypes                   = map[string]bool{
+		TypeBroadcastMessageHello: true,
+		TypeBroadcastMessageError: true,
 	}
-
-	HelloInterval = time.Second * 2
 )
-
-var EncodedHelloBroadcastMessage = func(message any) *EncodedUDPMessage {
-	hello := &BroadcastMessage{
-		Type: TypeBroadcastMessageHello,
-		Data: fmt.Sprintf("%v", message),
-		Name: hex.EncodeToString([]byte(hostname())),
-	}
-	encoded, err := hello.Encoded()
-	if err != nil {
-		panic(err)
-	}
-
-	encodedBytes, ok := encoded.(*EncodedUDPMessage)
-	if !ok {
-		panic("failed to type assert to EncodedUDPMessage")
-	}
-
-	return encodedBytes
-}
-
-var EncodedMalformedBroadcastMessage = func() *EncodedUDPMessage {
-	encoded, err := MalformedBroadcastMessage.Encoded()
-	if err != nil {
-		panic(err)
-	}
-
-	encodedBytes, ok := encoded.(*EncodedUDPMessage)
-	if !ok {
-		panic("failed to type assert to EncodedUDPMessage")
-	}
-
-	return encodedBytes
-}
 
 type BroadcastMessage struct {
 	Type string
@@ -92,24 +57,70 @@ type out struct {
 }
 
 type Broadcaster struct {
-	addr    string
-	ln      *net.UDPConn
-	inch    chan *in
-	outch   chan *out
-	message any
+	addr                string
+	ln                  *net.UDPConn
+	inch                chan *in
+	outch               chan *out
+	message             any
+	encodedHelloMsg     *EncodedUDPMessage
+	encodedMalformedMsg *EncodedUDPMessage
+	receiveOnly         bool
 
 	mu    sync.Mutex
 	peers map[string]*peer
 }
 
 func NewBroadcaster(addr string, message any) *Broadcaster {
-	return &Broadcaster{
-		addr:    addr,
-		inch:    make(chan *in, 100),
-		outch:   make(chan *out, 100),
-		peers:   make(map[string]*peer),
-		message: message,
+	b := &Broadcaster{
+		addr:        addr,
+		inch:        make(chan *in, 100),
+		outch:       make(chan *out, 100),
+		peers:       make(map[string]*peer),
+		message:     message,
+		receiveOnly: false,
 	}
+
+	b.encodedHelloMsg = b.createHelloBroadcastMessage(message)
+	b.encodedMalformedMsg = b.createMalformedBroadcastMessage()
+
+	return b
+}
+
+func NewReceiveOnlyBroadcaster(addr string) *Broadcaster {
+	b := &Broadcaster{
+		addr:        addr,
+		inch:        make(chan *in, 100),
+		outch:       make(chan *out, 100),
+		peers:       make(map[string]*peer),
+		receiveOnly: true,
+	}
+
+	return b
+}
+
+func (b *Broadcaster) createHelloBroadcastMessage(message any) *EncodedUDPMessage {
+	hello := &BroadcastMessage{
+		Type: TypeBroadcastMessageHello,
+		Data: fmt.Sprintf("%v", message),
+		Name: hex.EncodeToString([]byte(hostname())),
+	}
+	encoded, err := hello.Encoded()
+	if err != nil {
+		panic(err)
+	}
+	return encoded.(*EncodedUDPMessage)
+}
+
+func (b *Broadcaster) createMalformedBroadcastMessage() *EncodedUDPMessage {
+	malformed := &BroadcastMessage{
+		Type: TypeBroadcastMessageError,
+		Data: "Malformed message",
+	}
+	encoded, err := malformed.Encoded()
+	if err != nil {
+		panic(err)
+	}
+	return encoded.(*EncodedUDPMessage)
 }
 
 func (e *EncodedUDPMessage) String() string {
@@ -119,21 +130,27 @@ func (e *EncodedUDPMessage) String() string {
 func (e *EncodedUDPMessage) Parse() (Header, error) {
 	parts := strings.Split(e.String(), string(headerDelim))
 	if len(parts) != 3 {
-		return MalformedBroadcastMessage, ErrMalformedBroadcastMessage
+		return &BroadcastMessage{
+			Type: TypeBroadcastMessageError,
+			Data: "Malformed message",
+		}, ErrMalformedBroadcastMessage
 	}
 
-	t := parts[0]
-	t = strings.TrimSpace(t)
-	if !validType(t) {
-		return MalformedBroadcastMessage, ErrMalformedBroadcastMessage
+	t := strings.TrimSpace(parts[0])
+	if !validTypes[t] {
+		return &BroadcastMessage{
+			Type: TypeBroadcastMessageError,
+			Data: "Malformed message",
+		}, ErrMalformedBroadcastMessage
 	}
 
 	d := parts[1]
-
-	n := parts[2]
-	n = strings.TrimSpace(n)
+	n := strings.TrimSpace(parts[2])
 	if n == "" {
-		return MalformedBroadcastMessage, ErrMalformedBroadcastMessage
+		return &BroadcastMessage{
+			Type: TypeBroadcastMessageError,
+			Data: "Malformed message",
+		}, ErrMalformedBroadcastMessage
 	}
 
 	return &BroadcastMessage{Type: t, Data: d, Name: n}, nil
@@ -141,7 +158,6 @@ func (e *EncodedUDPMessage) Parse() (Header, error) {
 
 func (bm *BroadcastMessage) Encoded() (Encoded, error) {
 	str := fmt.Sprintf("%s%s%s%s%s", bm.Type, string(headerDelim), bm.Data, string(headerDelim), bm.Name)
-
 	b := EncodedUDPMessage(str)
 	return &b, nil
 }
@@ -154,7 +170,7 @@ func (b *Broadcaster) write(out *out) (n int, err error) {
 	return
 }
 
-func (b *Broadcaster) Start(ctx context.Context) error {
+func (b *Broadcaster) Init() error {
 	addr, err := net.ResolveUDPAddr("udp", b.addr)
 	if err != nil {
 		return err
@@ -164,27 +180,67 @@ func (b *Broadcaster) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer ln.Close()
 
-	err = ln.SetWriteBuffer(1024 * 1024)
-	if err != nil {
-		return err
+	if !b.receiveOnly {
+		err = ln.SetWriteBuffer(1024 * 1024)
+		if err != nil {
+			ln.Close()
+			return err
+		}
+
+		file, err := ln.File()
+		if err != nil {
+			ln.Close()
+			return err
+		}
+		defer file.Close()
+
+		err = syscall.SetsockoptInt(int(file.Fd()), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
+		if err != nil {
+			ln.Close()
+			return err
+		}
 	}
-
-	file, err := ln.File()
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Set broadcast socket permission
-	syscall.SetsockoptInt(int(file.Fd()), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
 
 	b.ln = ln
+	return nil
+}
 
-	go b.b(ctx)
+func (b *Broadcaster) Close() error {
+	if b.ln != nil {
+		return b.ln.Close()
+	}
+	return nil
+}
+
+func (b *Broadcaster) GetPeers() map[string]*peer {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	peers := make(map[string]*peer)
+	for k, v := range b.peers {
+		peers[k] = &peer{
+			name:      v.name,
+			data:      v.data,
+			addr:      v.addr,
+			lastHello: v.lastHello,
+		}
+	}
+	return peers
+}
+
+func (b *Broadcaster) Start(ctx context.Context) error {
+	err := b.Init()
+	if err != nil {
+		return err
+	}
+	defer b.Close()
+
+	if !b.receiveOnly {
+		go b.b(ctx)
+	}
+
 	go b.listenBytes(ctx)
-	go b.helloer(ctx)
 
 	_, port, err := net.SplitHostPort(b.addr)
 	if err != nil {
@@ -203,14 +259,13 @@ func (b *Broadcaster) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			n, remoteAddr, err := ln.ReadFromUDP(buf)
+			n, remoteAddr, err := b.ln.ReadFromUDP(buf)
 			if err != nil {
 				log.Printf("[err] %v\n", err)
 				continue
 			}
 
-			// Ignore broadcasts from self
-			if remoteAddr.IP.Equal(outboundIP()) && remoteAddr.Port == intPort {
+			if !b.receiveOnly && remoteAddr.IP.Equal(outboundIP()) && remoteAddr.Port == intPort {
 				continue
 			}
 
@@ -226,9 +281,10 @@ func (b *Broadcaster) listenBytes(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case out := <-b.outch:
-			go b.write(out)
+			if !b.receiveOnly {
+				go b.write(out)
+			}
 		case in := <-b.inch:
-			// Ignore err, since Parse will always return a BroadcastMessage
 			msg, _ := in.bytes.Parse()
 
 			parsedMessage, ok := msg.(*BroadcastMessage)
@@ -239,7 +295,9 @@ func (b *Broadcaster) listenBytes(ctx context.Context) error {
 			switch parsedMessage.Type {
 			case TypeBroadcastMessageError:
 				log.Printf("[err] %v", ErrMalformedBroadcastMessage)
-				go b.write(&out{bytes: EncodedMalformedBroadcastMessage(), addr: in.addr})
+				if !b.receiveOnly {
+					go b.write(&out{bytes: b.encodedMalformedMsg, addr: in.addr})
+				}
 			case TypeBroadcastMessageHello:
 				hnbytes, err := hex.DecodeString(parsedMessage.Name)
 				if err != nil {
@@ -268,62 +326,36 @@ func (b *Broadcaster) listenBytes(ctx context.Context) error {
 
 func (b *Broadcaster) b(ctx context.Context) error {
 	ticker := time.NewTicker(HelloInterval)
+	defer ticker.Stop()
+
 	_, port, err := net.SplitHostPort(b.addr)
 	if err != nil {
 		return err
 	}
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("255.255.255.255:%s", port))
+
+	broadcastAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("255.255.255.255:%s", port))
 	if err != nil {
 		return err
 	}
 
-	go b.write(&out{bytes: EncodedHelloBroadcastMessage(b.message), addr: addr})
+	go b.write(&out{bytes: b.encodedHelloMsg, addr: broadcastAddr})
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			go b.write(&out{bytes: EncodedHelloBroadcastMessage(b.message), addr: addr})
-		}
-	}
-}
+			go b.write(&out{bytes: b.encodedHelloMsg, addr: broadcastAddr})
 
-func (b *Broadcaster) helloer(ctx context.Context) error {
-	ticker := time.NewTicker(HelloInterval)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
 			b.mu.Lock()
-			for _, peer := range b.peers {
-				elapsed := time.Since(peer.lastHello)
-
-				if elapsed > HelloInterval+2*time.Second {
-					delete(b.peers, peer.name)
-					continue
+			for name, peer := range b.peers {
+				if time.Since(peer.lastHello) > HelloInterval+2*time.Second {
+					delete(b.peers, name)
 				}
-
-				go b.write(&out{bytes: EncodedHelloBroadcastMessage(b.message), addr: peer.addr})
 			}
 			b.mu.Unlock()
 		}
 	}
-}
-
-func validType(t string) (b bool) {
-	switch t {
-	case TypeBroadcastMessageHello:
-		fallthrough
-	case TypeBroadcastMessageError:
-		b = true
-	default:
-		b = false
-	}
-
-	return
 }
 
 func hostname() string {
@@ -331,7 +363,6 @@ func hostname() string {
 	if err != nil {
 		hn = fmt.Sprintf("%s-%s", "unknown", uuid.NewString())
 	}
-
 	return hn
 }
 
@@ -343,6 +374,5 @@ func outboundIP() net.IP {
 	defer conn.Close()
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
 	return localAddr.IP
 }

@@ -41,7 +41,7 @@ func NewSenderClient(addr, baddr, dir string) *Client {
 
 	return &Client{
 		addr:         addr,
-		broadcaster:  NewBroadcaster(baddr, addr),
+		broadcaster:  NewReceiveOnlyBroadcaster(baddr),
 		sender:       NewSender(),
 		fileselector: NewFileSelector(dir),
 		peerselector: NewPeerSelector(nil),
@@ -81,7 +81,12 @@ func (c *Client) StartReceiver(ctx context.Context) error {
 		return err
 	}
 
-	go c.broadcaster.Start(ctx)
+	// Only send out broadcasts
+	err = c.broadcaster.Init()
+	if err != nil {
+		return err
+	}
+	go c.broadcaster.b(ctx)
 
 	err = c.listen(ctx, ln)
 	if err != nil {
@@ -150,7 +155,7 @@ func (c *Client) StartSender(ctx context.Context) error {
 
 				r := &RequestHeader{
 					n:       len(c.fileselector.Selected),
-					nbytes:  c.fileselector.nBytesSelected,
+					nbytes:  float64(c.fileselector.nBytesSelected) / 1048576.0,
 					version: VERSION,
 				}
 
@@ -159,13 +164,30 @@ func (c *Client) StartSender(ctx context.Context) error {
 					return err
 				}
 
-				// TODO: Send the summary to the receiver
-				// before sending an end header
-				_, err = c.sender.Send(conn, c.fileselector.Selected)
+				summ, err := c.sender.Send(conn, c.fileselector.Selected, r)
 				if err != nil {
 					return err
 				}
 
+				fmt.Printf(
+					"[Summary] Sent %f MB\n[Summary] Failed %f MB\n",
+					summ.nBytes,
+					summ.nFailedBytes,
+				)
+
+				_, err = c.sender.WriteSummary(conn, summ)
+				if err != nil {
+					log.Println("[warn] failed to write summ, but all files were written")
+					return err
+				}
+
+				_, err = c.sender.WriteEnd(conn)
+				if err != nil {
+					log.Println("[warn] failed to write end, but all files were written")
+					return err
+				}
+
+				conn.Close()
 			}
 
 			if !Continue("Do you want to send again? (Yes/No)") {
@@ -292,7 +314,7 @@ func (c *Client) handleConn(conn net.Conn) error {
 	// Proceeding bytes will be a chain of EncodedFileHeader and actual file bytes
 	// if EncodedEndHeader is received, conn will be closed
 	// we will pass the reader to Receiver, which will handle all the parsing for files
-	return c.receiver.receive(conn)
+	return c.receiver.receive(conn, r)
 }
 
 func (c *Client) ReadRequest(conn net.Conn) (*RequestHeader, error) {
@@ -339,7 +361,7 @@ func Continue(txt string) bool {
 func OnRequest(r *RequestHeader) bool {
 	confirm := false
 
-	title := fmt.Sprintf("Accept %d files? (%d bytes) \n", r.n, r.nbytes)
+	title := fmt.Sprintf("Accept %d files? (%f MB) \n", r.n, r.nbytes)
 
 	huh.NewConfirm().
 		Title(title).

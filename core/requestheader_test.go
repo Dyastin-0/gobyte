@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,13 +41,13 @@ func TestParseRequestHeader(t *testing.T) {
 
 	expected := EncodedRequestHeader(
 		fmt.Appendf(nil,
-			"%s%s%s%s%s%s%s%s",
+			"%s%s%s%d%s%f%s%s",
 			string(headerDelim),
 			VERSION,
 			string(headerDelim),
-			strconv.FormatInt(int64(h.n), 10),
+			h.n,
 			string(headerDelim),
-			strconv.FormatInt(h.nbytes, 10),
+			h.nbytes,
 			string(headerDelim),
 			string(delim),
 		),

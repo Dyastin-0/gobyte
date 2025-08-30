@@ -37,13 +37,16 @@ func TestSend(t *testing.T) {
 	go func() {
 		io.Copy(io.Discard, receiver)
 	}()
-	summ, err := s.Send(sender, map[string]*FileHeader{"test.txt": fileHeader})
+
+	rq := &RequestHeader{n: 1}
+
+	summ, err := s.Send(sender, map[string]*FileHeader{"test.txt": fileHeader}, rq)
 	if err != nil {
 		t.Error(err)
 	}
 	receiver.Close()
 
-	assert.Equal(t, fileHeader.size, summ.nBytes)
+	assert.Equal(t, float64(fileHeader.size)/1048576.0, summ.nBytes)
 }
 
 func TestSendReceive(t *testing.T) {
@@ -74,15 +77,17 @@ func TestSendReceive(t *testing.T) {
 	defer receiver.Close()
 	defer sender.Close()
 
-	go r.receive(receiver)
+	rq := &RequestHeader{n: 1}
 
-	summ, err := s.Send(sender, map[string]*FileHeader{"test.txt": fileHeader})
+	go r.receive(receiver, rq)
+
+	summ, err := s.Send(sender, map[string]*FileHeader{"test.txt": fileHeader}, rq)
 	if err != nil {
 		t.Error(err)
 	}
 	receiver.Close()
 
-	assert.Equal(t, fileHeader.size, summ.nBytes)
+	assert.Equal(t, float64(fileHeader.size)/1048576.0, summ.nBytes)
 
 	time.Sleep(time.Millisecond * 100)
 
@@ -92,10 +97,10 @@ func TestSendReceive(t *testing.T) {
 		t.Error(err)
 	}
 
-	assert.Equal(t, summ.nBytes, receivedFileStat.Size())
+	assert.Equal(t, summ.nBytes, float64(receivedFileStat.Size())/1048576.0)
 }
 
-func createNFiles(n int, dir string) (int64, map[string]*FileHeader, error) {
+func createNFiles(n int, dir string) (float64, map[string]*FileHeader, error) {
 	files := make(map[string]*FileHeader, n)
 
 	var sumBytes int64
@@ -124,7 +129,7 @@ func createNFiles(n int, dir string) (int64, map[string]*FileHeader, error) {
 		}
 	}
 
-	return sumBytes, files, nil
+	return float64(sumBytes) / 1048576.0, files, nil
 }
 
 func TestSendReceivedMany(t *testing.T) {
@@ -142,9 +147,11 @@ func TestSendReceivedMany(t *testing.T) {
 	defer receiver.Close()
 	defer sender.Close()
 
-	go r.receive(receiver)
+	rq := &RequestHeader{n: 1}
 
-	summ, err := s.Send(sender, files)
+	go r.receive(receiver, rq)
+
+	summ, err := s.Send(sender, files, rq)
 	receiver.Close()
 	assert.NoError(t, err)
 
@@ -164,5 +171,5 @@ func TestSendReceivedMany(t *testing.T) {
 		assert.Equal(t, f.size, stat.Size())
 	}
 
-	assert.Equal(t, sumBytes, receivedSumBytes)
+	assert.Equal(t, sumBytes, float64(receivedSumBytes)/1048576.0)
 }

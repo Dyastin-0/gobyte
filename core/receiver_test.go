@@ -1,7 +1,6 @@
 package core
 
 import (
-	"context"
 	"net"
 	"os"
 	"path/filepath"
@@ -16,14 +15,16 @@ func TestReceive(t *testing.T) {
 	tempDir := t.TempDir()
 	r := NewReceiver(tempDir)
 
-	ln, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		t.Error(err)
-	}
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go r.Listen(ctx, ln)
+	go func() {
+		err := r.receive(serverConn, &RequestHeader{n: 1})
+		if err != nil {
+			t.Logf("receive error: %v", err)
+		}
+	}()
 
 	h := &FileHeader{
 		size: 4,
@@ -35,8 +36,6 @@ func TestReceive(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
-	hEncoded = hEncoded.(*EncodedFileHeader)
 
 	encodedBytes, ok := hEncoded.(*EncodedFileHeader)
 	if !ok {
@@ -46,12 +45,7 @@ func TestReceive(t *testing.T) {
 	bytesfull := append(*encodedBytes, []byte("test")...)
 	bytesfull = append(bytesfull, EndHeaderBytes...)
 
-	conn, err := net.Dial("tcp", ":8080")
-	if err != nil {
-		t.Error(err)
-	}
-
-	_, err = conn.Write(bytesfull)
+	_, err = clientConn.Write(bytesfull)
 	if err != nil {
 		t.Error(err)
 	}
@@ -63,33 +57,28 @@ func TestReceive(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
-	cancel()
-	time.Sleep(time.Millisecond * 50)
 }
 
 func TestReceiveRecoverCorrupt(t *testing.T) {
 	tempDir := t.TempDir()
 	r := NewReceiver(tempDir)
-	ctx, cancel := context.WithCancel(context.Background())
 
-	ln, err := net.Listen("tcp", ":9090")
-	if err != nil {
-		t.Error(err)
-	}
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
 
-	go r.Listen(ctx, ln)
+	go func() {
+		err := r.receive(serverConn, &RequestHeader{n: 1})
+		if err != nil {
+			t.Logf("receive error: %v", err)
+		}
+	}()
 
 	b := []byte("magic bytes")
 	b = append(b, []byte{headerDelim, headerDelim, headerDelim, delim}...)
 	corruptedHeader := EncodedFileHeader(b)
 
-	conn, err := net.Dial("tcp", ":9090")
-	if err != nil {
-		t.Error(err)
-	}
-
-	_, err = conn.Write(corruptedHeader)
+	_, err := clientConn.Write(corruptedHeader)
 	if err != nil {
 		t.Error(err)
 	}
@@ -111,9 +100,9 @@ func TestReceiveRecoverCorrupt(t *testing.T) {
 	}
 
 	bytesfull := append(*encodedBytes, []byte("test")...)
-	bytesfull = append(*encodedBytes, EndHeaderBytes...)
+	bytesfull = append(bytesfull, EndHeaderBytes...)
 
-	_, err = conn.Write(bytesfull)
+	_, err = clientConn.Write(bytesfull)
 	if err != nil {
 		t.Error(err)
 	}
@@ -125,14 +114,10 @@ func TestReceiveRecoverCorrupt(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
-	cancel()
-	time.Sleep(time.Millisecond * 5)
 }
 
 func TestDefaultWriteFunc(t *testing.T) {
 	tempDir := t.TempDir()
-
 	r := NewReceiver(tempDir)
 
 	h := &FileHeader{
@@ -142,7 +127,7 @@ func TestDefaultWriteFunc(t *testing.T) {
 	}
 
 	rd := strings.NewReader("readme")
-	n, err := r.Write(rd, h)
+	n, err := r.Write(rd, h, &RequestHeader{n: 1}, 1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -156,7 +141,7 @@ func TestDefaultWriteFunc(t *testing.T) {
 	}
 
 	rd = strings.NewReader("readme")
-	n, err = r.Write(rd, h)
+	n, err = r.Write(rd, h, &RequestHeader{n: 1}, 1)
 	if err != nil {
 		t.Error(err)
 	}

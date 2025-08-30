@@ -27,7 +27,7 @@ func (h *FileHeader) Open() (*os.File, error) {
 	return file, nil
 }
 
-// Encoded creates 0x1Fsize0x1Fname0x1Fpath0x1F0x1D
+// Encoded creates 0x1F<size>0x1F<name>0x1F<path>0x1F0x1D
 func (h *FileHeader) Encoded() (Encoded, error) {
 	if h.size < 0 {
 		return nil, ErrMalformedFileHeader
@@ -44,20 +44,21 @@ func (h *FileHeader) Encoded() (Encoded, error) {
 		return nil, ErrMalformedFileHeader
 	}
 
-	hd := fmt.Sprintf(
-		"%s%d%s%s%s%s%s%s",
-		string(headerDelim),
-		h.size,
-		string(headerDelim),
-		h.name,
-		string(headerDelim),
-		h.path,
-		string(headerDelim),
-		string(delim),
+	hd := EncodedFileHeader(
+		fmt.Sprintf(
+			"%s%d%s%s%s%s%s%s",
+			string(headerDelim),
+			h.size,
+			string(headerDelim),
+			h.name,
+			string(headerDelim),
+			h.path,
+			string(headerDelim),
+			string(delim),
+		),
 	)
 
-	encoded := EncodedFileHeader(hd)
-	return &encoded, nil
+	return &hd, nil
 }
 
 func (e *EncodedFileHeader) String() string {
