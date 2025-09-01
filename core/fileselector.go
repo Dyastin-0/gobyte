@@ -24,7 +24,7 @@ type FileSelector struct {
 	selected       string
 	dir            string
 	rootDir        string
-	Selected       map[string]*FileHeader
+	Selected       map[string]*FileMetadata
 	nBytesSelected int64
 	filter         string
 	page           int
@@ -37,7 +37,7 @@ func NewFileSelector(dir string) *FileSelector {
 	}
 	return &FileSelector{
 		dir:      abs,
-		Selected: make(map[string]*FileHeader),
+		Selected: make(map[string]*FileMetadata),
 		page:     0,
 	}
 }
@@ -142,8 +142,7 @@ func (f *FileSelector) RunRecur() error {
 	form := huh.NewSelect[string]().
 		Title(title).
 		Options(options...).
-		Value(&f.selected).
-		Height(20)
+		Value(&f.selected)
 
 	err = form.Run()
 	if err != nil {
@@ -244,7 +243,14 @@ func (f *FileSelector) Select(fullPath, path string, stat os.FileInfo) {
 		path = strings.TrimPrefix(path, f.dir)
 		path = strings.TrimPrefix(path, string(filepath.Separator))
 		f.nBytesSelected += stat.Size()
-		f.Selected[fullPath] = &FileHeader{name: stat.Name(), size: stat.Size(), abspath: fullPath, path: path}
+		f.Selected[fullPath] = &FileMetadata{
+			Size:       uint64(stat.Size()),
+			LengthName: uint32(len(stat.Name())),
+			LengthPath: uint32(len(path)),
+			Name:       stat.Name(),
+			Path:       path,
+			AbsPath:    fullPath,
+		}
 	}
 }
 
@@ -272,15 +278,6 @@ func (f *FileSelector) SelectDir(dir string) error {
 	return nil
 }
 
-func (f *FileSelector) GetSelectedPaths() []string {
-	paths := make([]string, 0, len(f.Selected))
-	for path := range f.Selected {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	return paths
-}
-
 func (f *FileSelector) ClearSelection() {
-	f.Selected = make(map[string]*FileHeader)
+	f.Selected = make(map[string]*FileMetadata)
 }

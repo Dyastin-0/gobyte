@@ -173,8 +173,7 @@ func (p *PeerSelector) RunRecur() error {
 	form := huh.NewSelect[string]().
 		Title(title).
 		Options(options...).
-		Value(&p.selected).
-		Height(20)
+		Value(&p.selected)
 
 	err := form.Run()
 	if err != nil {

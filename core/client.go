@@ -1,11 +1,9 @@
 package core
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 
@@ -15,7 +13,8 @@ import (
 )
 
 var (
-	ErrRequestDenied = errors.New("request denied")
+	ErrRequestDenied   = errors.New("request denied")
+	ErrInvalidResponse = errors.New("invalid response")
 
 	warningStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
@@ -29,7 +28,7 @@ type Client struct {
 	peerselector *PeerSelector
 	tofu         *tofu.Tofu
 
-	onRequest func(*RequestHeader) bool
+	onRequest func(*Request) bool
 }
 
 func NewSenderClient(addr, baddr, dir string) *Client {
@@ -41,7 +40,7 @@ func NewSenderClient(addr, baddr, dir string) *Client {
 
 	return &Client{
 		addr:         addr,
-		broadcaster:  NewReceiveOnlyBroadcaster(baddr),
+		broadcaster:  NewBroadcaster(baddr, addr),
 		sender:       NewSender(),
 		fileselector: NewFileSelector(dir),
 		peerselector: NewPeerSelector(nil),
@@ -153,35 +152,27 @@ func (c *Client) StartSender(ctx context.Context) error {
 					return err
 				}
 
-				r := &RequestHeader{
-					n:       len(c.fileselector.Selected),
-					nbytes:  float64(c.fileselector.nBytesSelected) / 1048576.0,
-					version: VERSION,
-				}
-
-				err = c.WriteRequest(conn, r)
-				if err != nil {
-					return err
-				}
-
-				summ, err := c.sender.Send(conn, c.fileselector.Selected, r)
-				if err != nil {
-					return err
-				}
-
-				fmt.Printf(
-					"[Summary] Sent %f MB\n[Summary] Failed %f MB\n",
-					summ.nBytes,
-					summ.nFailedBytes,
+				req := NewRequest(
+					uint64(c.fileselector.nBytesSelected),
+					uint32(len(c.fileselector.Selected)),
 				)
 
-				_, err = c.sender.WriteSummary(conn, summ)
+				err = c.sender.WriteRequest(conn, req)
 				if err != nil {
-					log.Println("[warn] failed to write summ, but all files were written")
 					return err
 				}
 
-				_, err = c.sender.WriteEnd(conn)
+				err = c.sender.ReadResponse(conn)
+				if err != nil {
+					return err
+				}
+
+				err = c.sender.Send(conn, c.fileselector.Selected, req)
+				if err != nil {
+					return err
+				}
+
+				err = c.sender.WriteEnd(conn)
 				if err != nil {
 					log.Println("[warn] failed to write end, but all files were written")
 					return err
@@ -195,61 +186,6 @@ func (c *Client) StartSender(ctx context.Context) error {
 			}
 		}
 	}
-}
-
-func (c *Client) WriteRequest(conn net.Conn, r *RequestHeader) error {
-	encoded, err := r.Encoded()
-	if err != nil {
-		return err
-	}
-
-	encodedBytes, ok := encoded.(*EncodedRequestHeader)
-	if !ok {
-		return errors.New("faild to type assert to EncodedRequestHeader")
-	}
-
-	_, err = conn.Write(*encodedBytes)
-	if err != nil {
-		return err
-	}
-
-	confirm, err := c.ReadResponse(conn)
-	if err != nil {
-		return err
-	}
-
-	if *confirm {
-		return nil
-	}
-
-	return ErrRequestDenied
-}
-
-func (c *Client) ReadResponse(conn net.Conn) (*bool, error) {
-	rd := bufio.NewReader(conn)
-
-	response, err := rd.ReadString(delim)
-	if err != nil {
-		return nil, err
-	}
-
-	encodedHeader := EncodedResponseHeader(response)
-	header, err := encodedHeader.Parse()
-	if err != nil {
-		return nil, err
-	}
-
-	parsedHeader, ok := header.(*ResponseHeader)
-	if !ok {
-		return nil, errors.New("faild to type assert to ResponseHeader")
-	}
-
-	if parsedHeader.ok == ResponseVersionMismatch {
-		return nil, ErrVersionMismatch
-	}
-
-	ok = parsedHeader.ok == ResponseOk
-	return &ok, nil
 }
 
 func (c *Client) listen(ctx context.Context, ln net.Listener) error {
@@ -279,69 +215,11 @@ func (c *Client) listen(ctx context.Context, ln net.Listener) error {
 
 		go func(conn net.Conn) {
 			defer conn.Close()
-			err := c.handleConn(conn)
+			err := c.receiver.receive(conn)
 			if err != nil {
 				log.Printf("[err] Connection handler error: %v", err)
 			}
 		}(conn)
-	}
-}
-
-func (c *Client) handleConn(conn net.Conn) error {
-	if c.onRequest == nil {
-		c.onRequest = OnRequest
-	}
-
-	// First header should be a RequestHeader
-	// if this is not a RequestHeader
-	// they can try to send a new header until conn is closed
-	r, err := c.ReadRequest(conn)
-	if err != nil {
-		return err
-	}
-
-	ok := c.onRequest(r)
-	if !ok {
-		_, err = conn.Write(NotOkResponseHeaderBytes)
-		return err
-	}
-
-	_, err = conn.Write(OkResponseHeaderBytes)
-	if err != nil {
-		return err
-	}
-
-	// Proceeding bytes will be a chain of EncodedFileHeader and actual file bytes
-	// if EncodedEndHeader is received, conn will be closed
-	// we will pass the reader to Receiver, which will handle all the parsing for files
-	return c.receiver.receive(conn, r)
-}
-
-func (c *Client) ReadRequest(conn net.Conn) (*RequestHeader, error) {
-	reader := bufio.NewReader(conn)
-
-	for {
-		header, err := reader.ReadString(delim)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil, err
-			}
-			continue
-		}
-
-		h := EncodedRequestHeader(header)
-
-		hd, err := h.Parse()
-		if err != nil {
-			return nil, err
-		}
-
-		parsed, ok := hd.(*RequestHeader)
-		if !ok {
-			return nil, errors.New("failed to type assert to RequestHeader")
-		}
-
-		return parsed, nil
 	}
 }
 
@@ -350,21 +228,6 @@ func Continue(txt string) bool {
 
 	huh.NewConfirm().
 		Title(txt).
-		Affirmative("Yes").
-		Negative("No").
-		Value(&confirm).
-		Run()
-
-	return confirm
-}
-
-func OnRequest(r *RequestHeader) bool {
-	confirm := false
-
-	title := fmt.Sprintf("Accept %d files? (%f MB) \n", r.n, r.nbytes)
-
-	huh.NewConfirm().
-		Title(title).
 		Affirmative("Yes").
 		Negative("No").
 		Value(&confirm).

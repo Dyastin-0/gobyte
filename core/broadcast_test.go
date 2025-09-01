@@ -1,150 +1,161 @@
 package core
 
 import (
-	"context"
-	"encoding/hex"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBroadcastServer(t *testing.T) {
 	b := NewBroadcaster(":8080", ":42069")
-	ctx, cancel := context.WithCancel(context.Background())
-	go b.Start(ctx)
+	ctx := t.Context()
 
+	go b.Start(ctx)
 	time.Sleep(time.Millisecond * 50)
 
-	addr, err := net.ResolveUDPAddr("udp", b.addr)
-	if err != nil {
-		t.Error(err)
-	}
+	addr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+	require.NoError(t, err)
 
 	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
+	defer conn.Close()
 
 	msg := &BroadcastMessage{
 		Type: TypeBroadcastMessageHello,
 		Data: ":42069",
-		Name: string(hex.EncodeToString([]byte("TEST"))),
+		Name: "TEST",
 	}
 
 	encodedHeader, err := msg.Encoded()
-	if err != nil {
-		t.Error(err)
+	require.NoError(t, err)
+
+	_, err = conn.Write(*encodedHeader)
+	require.NoError(t, err)
+
+	var peer *peer
+	var found bool
+	for range 10 {
+		time.Sleep(time.Millisecond * 50)
+		peers := b.GetPeers()
+		if p, ok := peers["TEST"]; ok {
+			peer = p
+			found = true
+			break
+		}
 	}
 
-	encodedBytes, ok := encodedHeader.(*EncodedUDPMessage)
-	if !ok {
-		t.Error("failed to type assert to EncodedUDPMessage")
-	}
-
-	conn.Write(*encodedBytes)
-
-	time.Sleep(time.Second * 4)
-
-	b.mu.Lock()
-	if p, ok := b.peers["TEST"]; !ok {
-		t.Error("expected peer TEST, but not found")
-	} else {
-		assert.Equal(t, "TEST", p.name)
-		assert.Equal(t, msg.Data, p.data)
-	}
-	b.mu.Unlock()
-
-	cancel()
-	time.Sleep(time.Millisecond * 50)
+	require.True(t, found, "expected peer TEST, but not found")
+	assert.Equal(t, "TEST", peer.name)
+	assert.Equal(t, msg.Data, peer.data)
 }
 
 func TestPeerDelete(t *testing.T) {
-	b := NewBroadcaster(":8080", ":42069")
-	ctx, cancel := context.WithCancel(context.Background())
-	go b.Start(ctx)
+	b := NewBroadcaster(":8081", ":42069")
+	ctx := t.Context()
 
-	addr, err := net.ResolveUDPAddr("udp", b.addr)
-	if err != nil {
-		t.Error(err)
-	}
+	go b.Start(ctx)
+	time.Sleep(time.Millisecond * 50)
+
+	addr, err := net.ResolveUDPAddr("udp", "localhost:8081")
+	require.NoError(t, err)
 
 	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
+	defer conn.Close()
 
 	msg := &BroadcastMessage{
-		Type: "hello",
-		Data: string(hex.EncodeToString([]byte("TEST"))),
+		Type: TypeBroadcastMessageHello,
+		Data: "TEST",
+		Name: "",
 	}
 
 	encodedMessage, err := msg.Encoded()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
-	encodedBytes, ok := encodedMessage.(*EncodedUDPMessage)
-	if !ok {
-		t.Error("failed to type assert to EncodedUDPMessage")
-	}
+	_, err = conn.Write(*encodedMessage)
+	require.NoError(t, err)
 
-	conn.Write(*encodedBytes)
+	time.Sleep(time.Millisecond * 200)
 
-	time.Sleep(time.Second * 1)
-
-	b.mu.Lock()
-	if _, ok := b.peers["TEST"]; ok {
-		t.Error("expected peer TEST to be deleted, but found")
-	}
-	b.mu.Unlock()
-
-	cancel()
+	peers := b.GetPeers()
+	assert.Empty(t, peers, "expected no peers due to validation error")
 }
 
 func TestMalformedBroadcastMessage(t *testing.T) {
+	malformedJSON := EncodedUDPMessage(`{"invalid":"json"`)
+	h, parseErr := malformedJSON.Parse()
+
+	assert.Equal(t, ErrMalformedBroadcastMessage, parseErr)
+	assert.Equal(t, TypeBroadcastMessageError, h.Type)
+	assert.Equal(t, "Malformed message", h.Data)
+
 	b := NewBroadcaster(":8082", ":42069")
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := t.Context()
+
 	go b.Start(ctx)
+	time.Sleep(time.Millisecond * 100)
 
-	time.Sleep(time.Millisecond * 50)
-
-	msg := []byte{headerDelim, headerDelim}
-
-	addr, err := net.ResolveUDPAddr("udp", b.addr)
-	if err != nil {
-		t.Error(err)
-	}
+	addr, err := net.ResolveUDPAddr("udp", "localhost:8082")
+	require.NoError(t, err)
 
 	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
+	defer conn.Close()
 
-	_, err = conn.Write(msg)
-	if err != nil {
-		t.Error(err)
-	}
+	_, err = conn.Write(malformedJSON)
+	require.NoError(t, err)
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 
 	buf := make([]byte, 1024)
 	n, _, err := conn.ReadFromUDP(buf)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	encodedBytes := EncodedUDPMessage(buf[:n])
+	response, parseErr := encodedBytes.Parse()
 
-	h, err := encodedBytes.Parse()
-	assert.Equal(t, ErrMalformedBroadcastMessage, err)
+	assert.NoError(t, parseErr)
+	assert.Equal(t, TypeBroadcastMessageError, response.Type)
+	assert.Equal(t, "Malformed message", response.Data)
+}
 
-	parsedHeader, ok := h.(*BroadcastMessage)
-	if !ok {
-		t.Error("failed to type assert to BroadcastMessage")
-	}
+func TestInvalidMessageType(t *testing.T) {
+	invalidTypeJSON := EncodedUDPMessage(`{"type":"invalid","data":"test","name":"TEST"}`)
+	h, parseErr := invalidTypeJSON.Parse()
 
-	assert.Equal(t, TypeBroadcastMessageError, parsedHeader.Type)
+	assert.Equal(t, ErrMalformedBroadcastMessage, parseErr)
+	assert.Equal(t, TypeBroadcastMessageError, h.Type)
+	assert.Equal(t, "Invalid message type", h.Data)
 
-	cancel()
-	time.Sleep(time.Millisecond * 50)
+	b := NewBroadcaster(":8083", ":42069")
+	ctx := t.Context()
+
+	go b.Start(ctx)
+	time.Sleep(time.Millisecond * 100)
+
+	addr, err := net.ResolveUDPAddr("udp", "localhost:8083")
+	require.NoError(t, err)
+
+	conn, err := net.DialUDP("udp", nil, addr)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	_, err = conn.Write(invalidTypeJSON)
+	require.NoError(t, err)
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	buf := make([]byte, 1024)
+	n, _, err := conn.ReadFromUDP(buf)
+	require.NoError(t, err)
+
+	encodedBytes := EncodedUDPMessage(buf[:n])
+	response, parseErr := encodedBytes.Parse()
+
+	assert.NoError(t, parseErr)
+	assert.Equal(t, TypeBroadcastMessageError, response.Type)
+	assert.Equal(t, "Malformed message", response.Data)
 }

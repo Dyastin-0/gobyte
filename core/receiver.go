@@ -1,29 +1,37 @@
 package core
 
 import (
-	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/charmbracelet/huh"
 )
 
 type Receiver struct {
-	dir string
+	dir       string
+	proto     *Proto
+	OnRequest func(req *Request) bool
 }
 
 func NewReceiver(dir string) *Receiver {
 	return &Receiver{
-		dir: dir,
+		dir:       dir,
+		proto:     NewProto(),
+		OnRequest: OnRequest,
 	}
 }
 
-func (r *Receiver) receive(rd io.Reader, rq *RequestHeader) error {
-	reader := bufio.NewReader(rd)
+func (r *Receiver) receive(rdw io.ReadWriter) error {
 	counter := 1
 
+	req := &Request{}
 	for {
-		header, err := reader.ReadString(delim)
+		buf := make([]byte, HeaderSize)
+		_, err := io.ReadFull(rdw, buf)
 		if err != nil {
 			if err == io.EOF {
 				return nil
@@ -31,69 +39,167 @@ func (r *Receiver) receive(rd io.Reader, rq *RequestHeader) error {
 			return err
 		}
 
-		encodedSummary := EncodedSummaryHeader(header)
-		summ, err := encodedSummary.Parse()
-		if err == nil {
-			parsedSumm, ok := summ.(*SummaryHeader)
-			if !ok {
-				continue
+		hd, err := r.proto.DeserializeHeader(buf)
+		if err != nil {
+			return err
+		}
+
+		switch hd.Type {
+		case TypeRequest:
+			var err error
+			req, err = r.ReadRequest(rdw)
+			if err != nil {
+				return err
 			}
 
-			fmt.Printf(
-				"[Summary] Received %f MB\n[Summary] Failed %f MB\n",
-				parsedSumm.nBytes,
-				parsedSumm.nFailedBytes,
-			)
-			continue
-		}
+			ok := r.OnRequest(req)
+			if !ok {
+				err = r.WriteResponse(rdw, TypeDenied)
+				return err
+			}
 
-		encodedEnd := EncodedEndHeader(header)
-		_, err = encodedEnd.Parse()
-		if err == nil {
-			// return if header is EndHeader
+			err = r.WriteResponse(rdw, TypeAck)
+			if err != nil {
+				return err
+			}
+
+			err = r.ReadFiles(rdw, req, &counter)
+			if err != nil {
+				return err
+			}
+
+		default:
+			r.WriteResponse(rdw, TypeError)
 			return nil
 		}
-
-		encoded := EncodedFileHeader(header)
-		h, err := encoded.Parse()
-		if err != nil {
-			// if current header is malformed, read until the next header again
-			continue
-		}
-
-		parsedHeader, ok := h.(*FileHeader)
-		if !ok {
-			continue
-		}
-
-		_, err = r.Write(reader, parsedHeader, rq, counter)
-		if err != nil {
-			return nil
-		}
-
-		counter++
 	}
 }
 
-func (r *Receiver) Write(rd io.Reader, h *FileHeader, rq *RequestHeader, counter int) (int64, error) {
-	path := filepath.Join(r.dir, h.path)
-	if err := os.MkdirAll(path, 0755); err != nil {
+func (r *Receiver) WriteResponse(w io.Writer, msgType uint8) error {
+	header := NewHeader(msgType, 0)
+	serializedheader, err := r.proto.SerializeHeader(header)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(serializedheader)
+	return err
+}
+
+func (r *Receiver) ReadFiles(rd io.Reader, req *Request, counter *int) error {
+	for {
+		buf := make([]byte, HeaderSize)
+		_, err := io.ReadFull(rd, buf)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+
+		hd, err := r.proto.DeserializeHeader(buf)
+		if err != nil {
+			return err
+		}
+
+		switch hd.Type {
+		case TypeFileMetadata:
+			metadata, err := r.ReadFileMetadata(rd)
+			if err != nil {
+				return err
+			}
+
+			_, err = r.Write(rd, metadata, req, *counter)
+			if err != nil {
+				return err
+			}
+
+			*counter++
+
+		case TypeEnd:
+			return nil
+		}
+	}
+}
+
+func (r *Receiver) ReadRequest(rd io.Reader) (*Request, error) {
+	buf := make([]byte, RequestSize)
+
+	_, err := io.ReadFull(rd, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	header, err := r.proto.DeserializeRequest(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return header, nil
+}
+
+func (r *Receiver) ReadFileMetadata(rd io.Reader) (*FileMetadata, error) {
+	fixedBuf := make([]byte, FileMetadataSize)
+	_, err := io.ReadFull(rd, fixedBuf)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := bytes.NewReader(fixedBuf)
+	var size uint64
+	var lengthName, lengthPath uint32
+
+	if err = binary.Read(reader, binary.BigEndian, &size); err != nil {
+		return nil, fmt.Errorf("failed to read size: %w", err)
+	}
+	if err = binary.Read(reader, binary.BigEndian, &lengthName); err != nil {
+		return nil, fmt.Errorf("failed to read name length: %w", err)
+	}
+	if err = binary.Read(reader, binary.BigEndian, &lengthPath); err != nil {
+		return nil, fmt.Errorf("failed to read path length: %w", err)
+	}
+
+	stringDataSize := int(lengthName) + int(lengthPath)
+	stringBuf := make([]byte, stringDataSize)
+	if stringDataSize > 0 {
+		_, err = io.ReadFull(rd, stringBuf)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	data := make([]byte, len(fixedBuf)+len(stringBuf))
+	copy(data, fixedBuf)
+	copy(data[len(fixedBuf):], stringBuf)
+
+	// Deserialize the complete metadata
+	metadata, err := r.proto.DeserializeFileMetadata(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return metadata, nil
+}
+
+func (r *Receiver) Write(rd io.Reader, metadata *FileMetadata, req *Request, counter int) (int64, error) {
+	dir := filepath.Join(r.dir, metadata.Path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return 0, err
 	}
 
-	filePath := filepath.Join(path, h.name)
+	filePath := filepath.Join(r.dir, metadata.Path, metadata.Name)
 
 	_, err := os.Stat(filePath)
 	if err == nil {
-		ext := filepath.Ext(h.name)
-		nameWithoutExt := (h.name)[:len(h.name)-len(ext)]
+		ext := filepath.Ext(metadata.Name)
+		nameWithoutExt := (metadata.Name)[:len(metadata.Name)-len(ext)]
 		var c int
-		c, err = countSameFileNamePrefix(path, nameWithoutExt, ext)
+		c, err = countSameFileNamePrefix(metadata.Path, nameWithoutExt, ext)
 		if err != nil {
 			return 0, err
 		}
 
-		filePath = filepath.Join(path, fmt.Sprintf("%s (%d)%s", nameWithoutExt, c+1, ext))
+		filePath = filepath.Join(r.dir, metadata.Path, fmt.Sprintf("%s (%d)%s", nameWithoutExt, c+1, ext))
 	}
 
 	file, err := os.Create(filePath)
@@ -102,10 +208,10 @@ func (r *Receiver) Write(rd io.Reader, h *FileHeader, rq *RequestHeader, counter
 	}
 	defer file.Close()
 
-	text := fmt.Sprintf("[%d/%d] Writing %s", counter, rq.n, h.name)
-	bar := DefaultBar(h.size, text)
+	text := fmt.Sprintf("[%d/%d] Writing %s", counter, req.Length, metadata.Name)
+	bar := DefaultBar(int64(metadata.Size), text)
 
-	n, err := io.CopyN(io.MultiWriter(file, bar), rd, h.size)
+	n, err := io.CopyN(io.MultiWriter(file, bar), rd, int64(metadata.Size))
 	return n, err
 }
 
@@ -116,4 +222,19 @@ func countSameFileNamePrefix(dir, prefix, ext string) (int, error) {
 		return 0, err
 	}
 	return len(matches), nil
+}
+
+func OnRequest(req *Request) bool {
+	confirm := false
+
+	title := fmt.Sprintf("Accept %d files? (%d Bytes) \n", req.Length, req.Size)
+
+	huh.NewConfirm().
+		Title(title).
+		Affirmative("Yes").
+		Negative("No").
+		Value(&confirm).
+		Run()
+
+	return confirm
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	gobyte "github.com/Dyastin-0/gobyte/core"
+	"github.com/Dyastin-0/gobyte/core"
 	"github.com/common-nighthawk/go-figure"
 	"github.com/urfave/cli/v3"
 )
@@ -18,7 +18,7 @@ func New() *cli.Command {
 	return &cli.Command{
 		Name:    "gobyte",
 		Usage:   "a simple p2p local area network file sharing cli app",
-		Version: gobyte.VERSION,
+		Version: core.VERSION,
 		Action:  gobyteAction,
 		Commands: []*cli.Command{
 			sendCommand(),
@@ -75,7 +75,7 @@ func sendAction(ctx context.Context, cmd *cli.Command) error {
 	dir := cmd.String("dir")
 	baddr := cmd.String("bAddr")
 
-	s := gobyte.NewSenderClient(addr, baddr, dir)
+	s := core.NewSenderClient(addr, baddr, dir)
 
 	return s.StartSender(ctx)
 }
@@ -97,7 +97,7 @@ func receiveAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	baddr := cmd.String("bAddr")
 
-	r := gobyte.NewReceiverClient(addr, baddr, dir)
+	r := core.NewReceiverClient(addr, baddr, dir)
 
 	errch := make(chan error, 1)
 
@@ -105,9 +105,12 @@ func receiveAction(ctx context.Context, cmd *cli.Command) error {
 		errch <- r.StartReceiver(ctx)
 	}()
 
-	<-ctx.Done()
-
-	return <-errch
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errch:
+		return err
+	}
 }
 
 func homeDir() string {

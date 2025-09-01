@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/Dyastin-0/gobyte/cmd"
+	"github.com/charmbracelet/huh"
 )
 
 func main() {
@@ -24,6 +25,8 @@ func main() {
 	}()
 
 	if err := c.Run(ctx, os.Args); err != nil {
-		log.Fatal(err)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, huh.ErrUserAborted) {
+			panic(err)
+		}
 	}
 }

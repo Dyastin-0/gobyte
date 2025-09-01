@@ -2,14 +2,13 @@ package core
 
 import (
 	"context"
-	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -32,9 +31,9 @@ var (
 )
 
 type BroadcastMessage struct {
-	Type string
-	Data string
-	Name string
+	Type string `json:"type"`
+	Data string `json:"data"`
+	Name string `json:"name"`
 }
 
 type peer struct {
@@ -102,64 +101,70 @@ func (b *Broadcaster) createHelloBroadcastMessage(message any) *EncodedUDPMessag
 	hello := &BroadcastMessage{
 		Type: TypeBroadcastMessageHello,
 		Data: fmt.Sprintf("%v", message),
-		Name: hex.EncodeToString([]byte(hostname())),
+		Name: hostname(),
 	}
 	encoded, err := hello.Encoded()
 	if err != nil {
 		panic(err)
 	}
-	return encoded.(*EncodedUDPMessage)
+	return encoded
 }
 
 func (b *Broadcaster) createMalformedBroadcastMessage() *EncodedUDPMessage {
 	malformed := &BroadcastMessage{
 		Type: TypeBroadcastMessageError,
 		Data: "Malformed message",
+		Name: hostname(),
 	}
 	encoded, err := malformed.Encoded()
 	if err != nil {
 		panic(err)
 	}
-	return encoded.(*EncodedUDPMessage)
+	return encoded
 }
 
 func (e *EncodedUDPMessage) String() string {
 	return string(*e)
 }
 
-func (e *EncodedUDPMessage) Parse() (Header, error) {
-	parts := strings.Split(e.String(), string(headerDelim))
-	if len(parts) != 3 {
+func (e *EncodedUDPMessage) Parse() (*BroadcastMessage, error) {
+	var bm BroadcastMessage
+	err := json.Unmarshal(*e, &bm)
+	if err != nil {
 		return &BroadcastMessage{
 			Type: TypeBroadcastMessageError,
 			Data: "Malformed message",
+			Name: hostname(),
 		}, ErrMalformedBroadcastMessage
 	}
 
-	t := strings.TrimSpace(parts[0])
-	if !validTypes[t] {
+	if !validTypes[bm.Type] {
 		return &BroadcastMessage{
 			Type: TypeBroadcastMessageError,
-			Data: "Malformed message",
+			Data: "Invalid message type",
+			Name: hostname(),
 		}, ErrMalformedBroadcastMessage
 	}
 
-	d := parts[1]
-	n := strings.TrimSpace(parts[2])
-	if n == "" {
+	if bm.Name == "" {
 		return &BroadcastMessage{
 			Type: TypeBroadcastMessageError,
-			Data: "Malformed message",
+			Data: "Missing name field",
+			Name: hostname(),
 		}, ErrMalformedBroadcastMessage
 	}
 
-	return &BroadcastMessage{Type: t, Data: d, Name: n}, nil
+	return &bm, nil
 }
 
-func (bm *BroadcastMessage) Encoded() (Encoded, error) {
-	str := fmt.Sprintf("%s%s%s%s%s", bm.Type, string(headerDelim), bm.Data, string(headerDelim), bm.Name)
-	b := EncodedUDPMessage(str)
-	return &b, nil
+func (bm *BroadcastMessage) Encoded() (*EncodedUDPMessage, error) {
+	jsonBytes, err := json.Marshal(bm)
+	if err != nil {
+		return nil, err
+	}
+
+	encoded := EncodedUDPMessage(jsonBytes)
+	return &encoded, nil
 }
 
 func (b *Broadcaster) write(out *out) (n int, err error) {
@@ -285,34 +290,25 @@ func (b *Broadcaster) listenBytes(ctx context.Context) error {
 				go b.write(out)
 			}
 		case in := <-b.inch:
-			msg, _ := in.bytes.Parse()
+			msg, err := in.bytes.Parse()
 
-			parsedMessage, ok := msg.(*BroadcastMessage)
-			if !ok {
-				continue
-			}
-
-			switch parsedMessage.Type {
+			switch msg.Type {
 			case TypeBroadcastMessageError:
-				log.Printf("[err] %v", ErrMalformedBroadcastMessage)
+				if err != nil {
+					log.Printf("[err] %v", err)
+				}
 				if !b.receiveOnly {
 					go b.write(&out{bytes: b.encodedMalformedMsg, addr: in.addr})
 				}
 			case TypeBroadcastMessageHello:
-				hnbytes, err := hex.DecodeString(parsedMessage.Name)
-				if err != nil {
-					log.Printf("[err] failed to decode string: %s", parsedMessage.Data)
-					continue
-				}
-
-				hn := string(hnbytes)
+				hn := msg.Name
 
 				b.mu.Lock()
 				if _, ok := b.peers[hn]; !ok {
 					b.peers[hn] = &peer{
 						addr:      in.addr,
 						lastHello: time.Now(),
-						data:      parsedMessage.Data,
+						data:      msg.Data,
 						name:      hn,
 					}
 				} else {
