@@ -107,7 +107,3 @@ Start as a sender:
 ```bash
 gobyte send
 ```
-
----
-
-Do you want me to also add a **Go snippet showing how to build a simple sender loop** (e.g. sending Request → FileMetadata → file bytes → End), so the README doubles as a reference implementation?
