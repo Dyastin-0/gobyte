@@ -1,8 +1,8 @@
 # gobyte
 
-`gobyte` is a command-line tool that enables fast and secure file transfers between devices on the same local network. It uses a custom file transfer protocol over TLS-encrypted TCP connections with a trust-on-first-use (TOFU) security mechanism.
+`gobyte` is a command-line tool that enables fast and secure file transfers between devices on the same local network. It uses a custom binary file transfer protocol over TLS-encrypted TCP connections with a trust-on-first-use (TOFU) security mechanism.
 
-## In Action
+## Demo
 
 ![demo](demo.gif)
 
@@ -10,19 +10,83 @@
 
 ### Connection
 
-`gobyte` uses `trust-on-first-use` over TLS/TCP similar to how SSH works. When establishing a connection, both peers must trust each other to proceed.
+`gobyte` uses **trust-on-first-use** over TLS/TCP, similar to how SSH works. When establishing a connection, both peers must trust each other to proceed.
 
 ### Protocol
 
-Each connection must start with the sender sending a `RequestHeader` which is encoded as `0x1F<version>0x1F<number of files>0x1F<total bytes>0x1F0x1D`.
+The current protocol version is `0x11` (`1.1`).
+Every message begins with a fixed **12-byte header**.
 
-The receiver can either send an ok or not ok `ResponseHeader`: `0x1F0x00x1F0x1D` or `0x1F0x1A0x1F0x1D` respectively. Sending a not ok response will immediately terminate the connection. 
+```go
+// Header (12 bytes)
+type Header struct {
+    Version  uint8  // must equal 0x11
+    Type     uint8  // message type
+    Length   uint64 // payload length in bytes
+    Reserved uint16 // must be zero
+}
+```
 
-After sending an ok `ResponseHeader`, the sender can start sending files.
+#### Message Types
 
-When sending a file, the sender must send a `FileHeader` which is encoded as `0x1F<size>0x1F<name>0x1F<relative-path>0x1F0x1D`, before sending the actual file bytes.
+```go
+const (
+    TypeRequest      uint8 = 0x01 // announce transfer
+    TypeFileMetadata uint8 = 0x02 // file metadata before file bytes
+    TypeAck          uint8 = 0x03 // acknowledgment
+    TypeEnd          uint8 = 0x04 // no more files
+    TypeHello        uint8 = 0x05 // unused---maybe will be used for manually trusting a peer
+    TypeDenied       uint8 = 0x06 // transfer denied
+    TypeError        uint8 = 0xFF // error message
+)
+```
 
-An entire file will look like `0x1F110x1Fhello_world.txt0x1F./0x1F0x1Dhello world0x1D`. The sender can send multiple files unless it explicitly sends `0x1F0x1E0x1F0x1D` which is an `EndHeader` - then the receiver will immediately terminate the connection.
+#### Payloads
+
+**Request** – announces the upcoming transfer (fixed 12 bytes):
+
+```go
+type Request struct {
+    Size   uint64 // total bytes to transfer
+    Length uint32 // number of files
+}
+```
+
+**FileMetadata** – describes a file (16 bytes + variable strings):
+
+```go
+type FileMetadata struct {
+    Size       uint64 // file size in bytes
+    LengthName uint32 // filename length
+    LengthPath uint32 // relative path length
+    Name       string // UTF-8 filename
+    Path       string // UTF-8 relative path
+    AbsPath    string // (not serialized) absolute path
+}
+```
+
+After a `FileMetadata` message, the **raw file bytes** follow directly.
+
+#### Example Flow
+
+1. Sender → Receiver
+   `Header{Type: TypeRequest}` + `Request{Size, Length}`
+
+2. Receiver → Sender
+   `Header{Type: TypeAck}`
+
+3. For each file:
+
+   * Sender → Receiver: `Header{Type: TypeFileMetadata}` + `FileMetadata`
+   * Sender → Receiver: file bytes (exactly `FileMetadata.Size` long)
+   * Receiver → Sender: `Header{Type: TypeAck}`
+
+4. When finished:
+
+   * Sender → Receiver: `Header{Type: TypeEnd}`
+   * Receiver closes the connection
+
+---
 
 ## Install
 
@@ -33,11 +97,17 @@ go install github.com/Dyastin-0/gobyte@latest
 ## Usage
 
 Start as a receiver:
+
 ```bash
 gobyte receive
 ```
 
 Start as a sender:
+
 ```bash
 gobyte send
 ```
+
+---
+
+Do you want me to also add a **Go snippet showing how to build a simple sender loop** (e.g. sending Request → FileMetadata → file bytes → End), so the README doubles as a reference implementation?
