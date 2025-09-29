@@ -10,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -172,7 +171,7 @@ func (b *Broadcaster) write(out *out) (n int, err error) {
 	if err != nil {
 		log.Printf("[err] %v\n", err)
 	}
-	return
+	return n, err
 }
 
 func (b *Broadcaster) Init() error {
@@ -200,8 +199,7 @@ func (b *Broadcaster) Init() error {
 		}
 		defer file.Close()
 
-		err = syscall.SetsockoptInt(int(file.Fd()), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
-		if err != nil {
+		if err := setBroadcast(file.Fd()); err != nil {
 			ln.Close()
 			return err
 		}
