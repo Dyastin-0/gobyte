@@ -19,6 +19,7 @@ func NewSender() *Sender {
 
 func (s *Sender) Send(conn io.Writer, fileMetadata map[string]*FileMetadata, req *Request) error {
 	counter := 1
+	speed := 0.0
 
 	for _, metadata := range fileMetadata {
 		err := s.WriteHeader(conn, metadata)
@@ -27,7 +28,7 @@ func (s *Sender) Send(conn io.Writer, fileMetadata map[string]*FileMetadata, req
 			continue
 		}
 
-		written, err := s.WriteFile(conn, metadata, req, counter)
+		written, bs, err := s.WriteFile(conn, metadata, req, counter)
 		if err != nil {
 			return err
 		}
@@ -37,8 +38,11 @@ func (s *Sender) Send(conn io.Writer, fileMetadata map[string]*FileMetadata, req
 				metadata.Name, metadata.Size, written)
 		}
 
+		speed += bs
 		counter++
 	}
+
+	fmt.Printf("[inf] average transfer speed: %0.2f\n", speed/float64(counter))
 
 	return nil
 }
@@ -128,14 +132,19 @@ func (s *Sender) WriteHeader(w io.Writer, metadata *FileMetadata) error {
 	return nil
 }
 
-func (s *Sender) WriteFile(conn io.Writer, metadata *FileMetadata, req *Request, count int) (int64, error) {
+func (s *Sender) WriteFile(conn io.Writer, metadata *FileMetadata, req *Request, count int) (int64, float64, error) {
 	file, err := os.Open(metadata.AbsPath)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	text := fmt.Sprintf("[%d/%d] Sending %s", count, req.Length, metadata.Name)
 	bar := DefaultBar(int64(metadata.Size), text)
 
-	return io.CopyN(io.MultiWriter(conn, bar), file, int64(metadata.Size))
+	n, err := io.CopyN(io.MultiWriter(conn, bar), file, int64(metadata.Size))
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return n, bar.State().KBsPerSecond, nil
 }
